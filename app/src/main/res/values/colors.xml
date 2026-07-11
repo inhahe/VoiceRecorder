@@ -1,0 +1,17 @@
+<resources>
+    <color name="primary">#3F51B5</color>
+    <color name="primary_dark">#303F9F</color>
+    <color name="accent">#FF5252</color>
+
+    <color name="ok_green">#2E7D32</color>
+    <color name="warn_red">#C62828</color>
+    <color name="dim_text">#9E9E9E</color>
+    <color name="normal_text">#212121</color>
+    <color name="folder_tint">#FBC02D</color>
+
+    <color name="note_bg">#FFF8E1</color>
+    <color name="note_stroke">#FFE082</color>
+    <color name="note_title">#E65100</color>
+
+    <color name="ic_launcher_background">#3F51B5</color>
+</resources>
