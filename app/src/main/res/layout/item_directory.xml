@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="?attr/selectableItemBackground"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="12dp">
+
+    <ImageView
+        android:id="@+id/item_dir_icon"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:src="@drawable/ic_folder"
+        android:contentDescription="@string/save_folder_label" />
+
+    <TextView
+        android:id="@+id/item_dir_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:text=""
+        android:textSize="16sp" />
+
+    <ImageView
+        android:id="@+id/item_dir_lock"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:src="@drawable/ic_lock"
+        android:visibility="gone"
+        android:contentDescription="@string/folder_off_limits" />
+</LinearLayout>
