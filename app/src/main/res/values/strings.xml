@@ -78,6 +78,9 @@
     <string name="bitrate_na">Bitrate doesn\'t apply to lossless WAV</string>
     <string name="filename_required">Enter a file name</string>
     <string name="filename_illegal">File name contains illegal characters</string>
+    <string name="recent_names_title">Recent file names</string>
+    <string name="new_timestamp_name">New timestamp (%1$s)</string>
+    <string name="will_save_as">Will save as %1$s</string>
 
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
@@ -94,4 +97,11 @@
     <string name="filename_pattern_help">Uses date/time formatting. Example preview shown below. Literal text must be wrapped in single quotes.</string>
     <string name="not_applicable_lossless">n/a (lossless)</string>
     <string name="save">Save</string>
+    <string name="reuse_name_setting">Reuse last file name</string>
+    <string name="reuse_name_summary">New recordings start with the previous recording\'s name instead of a fresh timestamp. Repeated takes get _2, _3, … suffixes.</string>
+    <string name="recent_names_setting">Remembered file names</string>
+    <string name="recent_names_summary">%1$d remembered · tap to view or clear</string>
+    <string name="recent_names_empty">None yet</string>
+    <string name="clear_recent_names">Clear list</string>
+    <string name="recent_names_cleared">Remembered file names cleared</string>
 </resources>

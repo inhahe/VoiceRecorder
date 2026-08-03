@@ -47,6 +47,24 @@ object StorageUtil {
         return String.format(Locale.US, "%.2f GB", mb / 1024.0)
     }
 
+    /**
+     * First non-colliding file name for `base.ext`, appending `_2`, `_3`, … until [exists] says no.
+     * Pure (no filesystem) so it can be unit-tested; [uniqueFile] is the on-disk wrapper.
+     */
+    fun nextAvailableName(base: String, ext: String, exists: (String) -> Boolean): String {
+        var candidate = "$base.$ext"
+        var i = 2
+        while (exists(candidate)) {
+            candidate = "${base}_$i.$ext"
+            i++
+        }
+        return candidate
+    }
+
+    /** The file `base.ext` in [dir], suffixed with `_2`, `_3`, … if that name is already taken. */
+    fun uniqueFile(dir: File, base: String, ext: String): File =
+        File(dir, nextAvailableName(base, ext) { File(dir, it).exists() })
+
     private fun firstExistingAncestor(dir: File): File? {
         var d: File? = dir
         while (d != null && !d.exists()) d = d.parentFile
