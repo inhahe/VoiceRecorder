@@ -172,5 +172,72 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
+        <!-- Reuse the previous recording's file name -->
+        <LinearLayout
+            android:id="@+id/settingReuseName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground"
+            android:paddingVertical="12dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/reuse_name_setting"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/reuse_name_summary"
+                    android:textColor="@color/dim_text"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchReuseName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:clickable="false"
+                android:focusable="false" />
+        </LinearLayout>
+
+        <!-- Remembered file names -->
+        <LinearLayout
+            android:id="@+id/settingRecentNames"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground"
+            android:paddingVertical="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/recent_names_setting"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/valueRecentNames"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/dim_text"
+                android:textSize="14sp" />
+        </LinearLayout>
+
     </LinearLayout>
 </ScrollView>

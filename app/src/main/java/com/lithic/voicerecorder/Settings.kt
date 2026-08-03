@@ -2,6 +2,8 @@ package com.lithic.voicerecorder
 
 import android.content.Context
 import android.os.Environment
+import org.json.JSONArray
+import org.json.JSONException
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -51,6 +53,39 @@ class Settings(context: Context) {
         get() = prefs.getString(KEY_FILENAME_PATTERN, DEFAULT_FILENAME_PATTERN) ?: DEFAULT_FILENAME_PATTERN
         set(value) = prefs.edit().putString(KEY_FILENAME_PATTERN, value).apply()
 
+    /**
+     * When true, a new recording starts with the file name used for the previous recording instead
+     * of a fresh timestamp — handy for doing several takes of the same thing (the `_2`, `_3`, …
+     * suffix keeps each take a separate file).
+     */
+    var reuseLastFilename: Boolean
+        get() = prefs.getBoolean(KEY_REUSE_LAST_NAME, true)
+        set(value) = prefs.edit().putBoolean(KEY_REUSE_LAST_NAME, value).apply()
+
+    /** Most-recently-used base names (no extension), newest first. Offered in the pre-record dialog. */
+    var recentBaseNames: List<String>
+        get() {
+            val raw = prefs.getString(KEY_RECENT_NAMES, null) ?: return emptyList()
+            return try {
+                val arr = JSONArray(raw)
+                (0 until arr.length()).mapNotNull { arr.optString(it, "").takeIf { s -> s.isNotEmpty() } }
+            } catch (_: JSONException) {
+                emptyList()
+            }
+        }
+        set(value) {
+            val arr = JSONArray()
+            value.take(MAX_RECENT_NAMES).forEach { arr.put(it) }
+            prefs.edit().putString(KEY_RECENT_NAMES, arr.toString()).apply()
+        }
+
+    /** Record [name] as the most recently used base name. */
+    fun rememberBaseName(name: String) {
+        recentBaseNames = mergeRecent(recentBaseNames, name)
+    }
+
+    fun clearRecentBaseNames() = prefs.edit().remove(KEY_RECENT_NAMES).apply()
+
     /** Resolve the current default spec from the stored defaults. */
     fun defaultSpec(): AudioFormatSpec = AudioFormatSpec(
         format = defaultFormat.let { if (it.isSupportedOnThisDevice) it else AudioFormat.M4A },
@@ -59,9 +94,16 @@ class Settings(context: Context) {
         channels = channels
     )
 
-    /** Build a suggested filename (without extension) for a new recording. */
+    /** Build a filename (without extension) from the timestamp pattern. */
     fun suggestedBaseName(now: Date = Date()): String =
         SimpleDateFormat(filenamePattern, Locale.US).format(now)
+
+    /**
+     * The name the pre-record dialog should start with: the previous recording's name when
+     * [reuseLastFilename] is on and there is one, otherwise a fresh timestamped name.
+     */
+    fun startingBaseName(now: Date = Date()): String =
+        (if (reuseLastFilename) recentBaseNames.firstOrNull() else null) ?: suggestedBaseName(now)
 
     /** The effective save directory as a File, falling back to the default location. */
     fun saveDirectoryFile(): File {
@@ -77,8 +119,24 @@ class Settings(context: Context) {
         private const val KEY_CHANNELS = "channels"
         private const val KEY_SAVE_DIR = "save_dir"
         private const val KEY_FILENAME_PATTERN = "filename_pattern"
+        private const val KEY_REUSE_LAST_NAME = "reuse_last_filename"
+        private const val KEY_RECENT_NAMES = "recent_base_names"
 
         const val DEFAULT_FILENAME_PATTERN = "'Recording_'yyyyMMdd_HHmmss"
+
+        /** How many previously-used file names are remembered for the dropdown. */
+        const val MAX_RECENT_NAMES = 12
+
+        /**
+         * Put [name] at the front of [existing], removing any earlier (case-insensitive) copy and
+         * capping the list at [max]. Blank names are ignored. Pure, so it's unit-testable.
+         */
+        fun mergeRecent(existing: List<String>, name: String, max: Int = MAX_RECENT_NAMES): List<String> {
+            val trimmed = name.trim()
+            if (trimmed.isEmpty()) return existing
+            val rest = existing.filterNot { it.equals(trimmed, ignoreCase = true) || it.isBlank() }
+            return (listOf(trimmed) + rest).take(max)
+        }
 
         /** A reasonable default target: <shared storage>/VoiceRecordings. */
         fun defaultSaveDirectory(): File =

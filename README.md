@@ -18,8 +18,14 @@ built-in directory navigator.
 - **Pause / resume:** recordings can be paused and resumed mid-capture. Paused spans are excluded
   from the timer and simply produce a gap in the file (the mic stream is stopped while paused), and
   the ongoing notification switches to "Recording paused".
-- **Editable filenames:** each recording gets a timestamped default name, shown in an editable dialog
-  **before** recording starts (never after).
+- **Editable filenames:** each recording gets a default name, shown in an editable dialog **before**
+  recording starts (never after). The dialog previews the file that will actually be written
+  (*"Will save as Interview_3.m4a"*).
+- **Filename history (multiple takes):** the app remembers the last 12 names you used. New recordings
+  start with the **previous** recording's name by default, and the **▾** button next to the name field
+  lists the remembered names (plus a fresh timestamp) to pick from; typing also offers matching names.
+  Repeated takes never overwrite — they get `_2`, `_3`, … suffixes. Turn the prefill off, or clear the
+  remembered names, in **Settings → Reuse last file name / Remembered file names**.
 - **Permissions on first use:** the app asks for microphone and storage access up front. On
   sideloaded builds the home screen shows a "Folder access needed" note with exact steps for
   granting **All files access** (Android hides the switch behind App info → ⋮ → "Allow restricted
@@ -49,6 +55,17 @@ gradlew.bat assembleDebug
 
 The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
+Convenience scripts (Windows, run from the project folder):
+
+| Script | What it does |
+|---|---|
+| `build-apk.bat` | Builds and drops `VoiceRecorder-<version>.apk` in the project folder (`build-apk.bat clean` for a clean build). |
+| `update-phone.bat` | Builds, then installs onto the phone connected over USB (`adb install -r`, app data kept). |
+| `publish-release.bat` | Builds and publishes a new GitHub release `v<version>` with the APK attached, using the [GitHub CLI](https://cli.github.com/). |
+
+The version lives in `app/build.gradle.kts` (`versionName` / `versionCode`) and drives the APK name
+and the release tag; bump it with every change.
+
 `local.properties` must point at your Android SDK. Use **forward slashes** (it's a Java `.properties`
 file, so `\U`, `\A`, etc. are eaten as escape sequences and will corrupt a Windows path):
 
@@ -70,11 +87,11 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 | `SpectrumView.kt` | Custom view that eases/animates the analyzer bands while recording. |
 | `Fft.kt` | Dependency-free radix-2 FFT. |
 | `AudioFormatSpec.kt` | Format enum + resolved spec; bytes/second estimation. |
-| `Settings.kt` | SharedPreferences-backed defaults, save dir, filename pattern. |
-| `StorageUtil.kt` | Free-space and available-recording-time helpers. |
+| `Settings.kt` | SharedPreferences-backed defaults, save dir, filename pattern, recent-filename MRU list. |
+| `StorageUtil.kt` | Free-space / available-recording-time helpers and unique-filename resolution. |
 | `PermissionUtil.kt` | Mic / notification / storage (incl. All-files-access) permission logic. |
 | `DirectoryPickerDialog.kt` | The custom folder navigator (browse, create, off-limits marking). |
-| `PreRecordDialog.kt` | Pre-recording dialog: filename + format/rate/bitrate + storage estimate. |
+| `PreRecordDialog.kt` | Pre-recording dialog: filename (+ history dropdown & resolved-name preview) + format/rate/bitrate + storage estimate. |
 
 ## Notes
 

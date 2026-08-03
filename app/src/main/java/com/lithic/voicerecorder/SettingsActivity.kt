@@ -1,6 +1,7 @@
 package com.lithic.voicerecorder
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.lithic.voicerecorder.databinding.ActivitySettingsBinding
@@ -33,6 +34,8 @@ class SettingsActivity : AppCompatActivity() {
         setupChannels()
         setupFolder()
         setupFilename()
+        setupReuseName()
+        setupRecentNames()
         refresh()
     }
 
@@ -127,6 +130,30 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupReuseName() {
+        binding.settingReuseName.setOnClickListener {
+            settings.reuseLastFilename = !settings.reuseLastFilename
+            refresh()
+        }
+    }
+
+    private fun setupRecentNames() {
+        binding.settingRecentNames.setOnClickListener {
+            val names = settings.recentBaseNames
+            if (names.isEmpty()) return@setOnClickListener
+            AlertDialog.Builder(this)
+                .setTitle(R.string.recent_names_title)
+                .setItems(names.toTypedArray(), null)
+                .setPositiveButton(R.string.clear_recent_names) { _, _ ->
+                    settings.clearRecentBaseNames()
+                    Toast.makeText(this, R.string.recent_names_cleared, Toast.LENGTH_SHORT).show()
+                    refresh()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+    }
+
     private fun refresh() {
         val s = settings
         binding.valueFormat.text = s.defaultFormat.displayName
@@ -147,6 +174,16 @@ class SettingsActivity : AppCompatActivity() {
         } catch (_: Exception) {
             s.filenamePattern
         }
+
+        binding.switchReuseName.isChecked = s.reuseLastFilename
+        val recent = s.recentBaseNames
+        binding.valueRecentNames.text = if (recent.isEmpty()) {
+            getString(R.string.recent_names_empty)
+        } else {
+            getString(R.string.recent_names_summary, recent.size)
+        }
+        binding.settingRecentNames.isEnabled = recent.isNotEmpty()
+        binding.settingRecentNames.alpha = if (recent.isEmpty()) 0.4f else 1f
     }
 
     private fun hzLabel(hz: Int): String =

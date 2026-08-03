@@ -23,13 +23,14 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <EditText
+            <AutoCompleteTextView
                 android:id="@+id/pr_filename"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:inputType="text"
                 android:importantForAutofill="no"
+                android:completionThreshold="1"
                 android:hint="@string/filename_label" />
 
             <TextView
@@ -40,7 +41,25 @@
                 android:text=".m4a"
                 android:textStyle="bold"
                 android:textSize="16sp" />
+
+            <ImageButton
+                android:id="@+id/pr_recent_names"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_arrow_down"
+                android:contentDescription="@string/recent_names_title" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/pr_resolved_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text=""
+            android:textSize="13sp"
+            android:textColor="@color/dim_text" />
 
         <TextView
             android:layout_width="wrap_content"

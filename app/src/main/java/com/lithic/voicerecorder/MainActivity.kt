@@ -195,7 +195,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (service?.isRecording == true) return
 
-        val dialog = PreRecordDialog.new(settings.suggestedBaseName())
+        val dialog = PreRecordDialog.new(settings.startingBaseName())
         dialog.onConfirmed = { baseName, spec -> beginRecording(baseName, spec) }
         dialog.show(supportFragmentManager, "pre_record")
     }
@@ -208,7 +208,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val outFile = uniqueFile(dir, baseName, spec.format.extension)
+        val outFile = StorageUtil.uniqueFile(dir, baseName, spec.format.extension)
 
         // Ensure the service is started (so it survives unbinding) before issuing the command.
         startService(Intent(this, RecordingService::class.java))
@@ -219,6 +219,9 @@ class MainActivity : AppCompatActivity() {
         }
         try {
             svc.startRecording(spec, outFile)
+            // Remember what the user typed (not the `_2`-suffixed result) so the next take of the
+            // same thing starts from the same name.
+            settings.rememberBaseName(baseName)
         } catch (t: Throwable) {
             AlertDialog.Builder(this)
                 .setTitle(R.string.recording_failed)
@@ -321,13 +324,4 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun uniqueFile(dir: File, base: String, ext: String): File {
-        var candidate = File(dir, "$base.$ext")
-        var i = 2
-        while (candidate.exists()) {
-            candidate = File(dir, "${base}_$i.$ext")
-            i++
-        }
-        return candidate
-    }
 }
