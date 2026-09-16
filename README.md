@@ -100,3 +100,9 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
   - **M4A / Opus:** `bitrate ÷ 8`, approximate (ignores container overhead).
 - See `known-issues.md` for limitations (WMA, Opus version gate, storage-permission trade-offs) and
   possible future work.
+
+
+## License
+
+MIT - see [LICENSE](LICENSE). Free to use, modify and redistribute; provided
+as-is, with no warranty.
