@@ -1,9 +1,38 @@
 package com.lithic.voicerecorder
 
+import android.media.AudioDeviceInfo
+import android.media.MediaRecorder
 import java.io.File
 
 /** Something that can capture microphone audio to a file. */
 interface Recorder {
+    /**
+     * Digital input gain in dB (see [Gain]). Safe to change while recording — the new value takes
+     * effect on the next captured buffer.
+     */
+    var gainDb: Int
+
+    /**
+     * Which capture device to record from, or null to let Android choose. Safe to change while
+     * recording; the platform re-routes the running stream.
+     *
+     * This is a *hint* (`AudioRecord.setPreferredDevice`) — see [routedInputLabel] for what capture
+     * actually ended up on.
+     */
+    var preferredInput: AudioDeviceInfo?
+
+    /** Label of the device audio is really coming from, or null when not recording. */
+    val routedInputLabel: String?
+
+    /**
+     * [android.os.SystemClock.elapsedRealtime] of the most recent clipped sample, or 0 if nothing
+     * has clipped. The UI uses it to flash a clip warning.
+     */
+    val lastClipElapsedMs: Long
+
+    /** Total samples that clipped during this recording. */
+    val clippedSamples: Long
+
     /** Begin capture. Throws on failure (caller should surface the error and clean up). */
     fun start()
 
@@ -28,6 +57,9 @@ object RecorderFactory {
     fun create(
         spec: AudioFormatSpec,
         outputFile: File,
-        analyzer: SpectrumAnalyzer? = null
-    ): Recorder = PcmRecorder(spec, outputFile, analyzer)
+        analyzer: SpectrumAnalyzer? = null,
+        gainDb: Int = 0,
+        input: AudioDeviceInfo? = null,
+        audioSource: Int = MediaRecorder.AudioSource.MIC
+    ): Recorder = PcmRecorder(spec, outputFile, analyzer, gainDb, input, audioSource)
 }

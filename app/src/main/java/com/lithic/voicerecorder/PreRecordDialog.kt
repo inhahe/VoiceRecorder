@@ -47,8 +47,13 @@ class PreRecordDialog : DialogFragment() {
     private lateinit var bitrateButton: Button
     private lateinit var storageText: TextView
     private lateinit var extensionLabel: TextView
+    private lateinit var rateWarningText: TextView
+    private lateinit var rateNoteText: TextView
 
     private var recentNames: List<String> = emptyList()
+
+    /** The input the recording will use, for the "this device records at 48 kHz" advisory. */
+    private var selectedInput: InputDevices.InputOption? = null
 
     private lateinit var supportedFormats: List<AudioFormat>
     private var format: AudioFormat = AudioFormat.M4A
@@ -78,6 +83,14 @@ class PreRecordDialog : DialogFragment() {
         bitrateButton = root.findViewById(R.id.pr_bitrate)
         storageText = root.findViewById(R.id.pr_storage)
         extensionLabel = root.findViewById(R.id.pr_extension)
+        rateWarningText = root.findViewById(R.id.pr_rate_warning)
+        rateNoteText = root.findViewById(R.id.pr_rate_note)
+
+        // "effective", not "match": under the default Automatic setting we still want to warn about
+        // a plugged-in USB mic's native rate.
+        selectedInput = InputDevices.effective(
+            InputDevices.options(requireContext()), settings.inputDeviceKey
+        )
 
         setupNameField()
 
@@ -169,15 +182,83 @@ class PreRecordDialog : DialogFragment() {
         resolvedNameText.text = getString(R.string.will_save_as, resolved)
     }
 
+    /**
+     * The rates this device can actually record at in the currently-chosen format. Recomputed rather
+     * than cached locally because it changes with the format (Opus is 48 kHz-family, WAV can reach
+     * 96 kHz); [SampleRateSupport] does the caching.
+     */
+    private fun supportedRates(): List<Int> = SampleRateSupport.supported(format, channels)
+
     private fun refreshControls() {
+        // A format change can invalidate the chosen rate (e.g. 96 kHz WAV → Opus), so land on the
+        // nearest rate that format can actually encode instead of failing at start().
+        sampleRate = AudioFormatSpec.snap(sampleRate, supportedRates())
         extensionLabel.text = ".${format.extension}"
-        sampleRateButton.text = getString(R.string.sample_rate_value, formatHz(sampleRate))
+        sampleRateButton.text = getString(R.string.sample_rate_value, AudioFormatSpec.hzLabel(sampleRate))
         bitrateButton.text = getString(R.string.bitrate_value, bitrateKbps)
         // Bitrate only matters for compressed formats.
         bitrateButton.isEnabled = format.compressed
         bitrateButton.alpha = if (format.compressed) 1f else 0.4f
         updateResolvedName()
+        updateRateWarning()
+        updateRateNote()
         updateStorage()
+    }
+
+    /**
+     * The quiet counterpart to [updateRateWarning]: the chosen rate is one the input supports, but
+     * below its ceiling, so the platform will resample down. That is a normal, usually-deliberate
+     * trade (smaller files), so it is stated in dim text and cannot be tapped — there is nothing to
+     * fix. [InputDevices.downsampleFrom] returns null in exactly the cases the red warning covers,
+     * so the two lines are never both visible.
+     */
+    private fun updateRateNote() {
+        val device = selectedInput
+        val from = InputDevices.downsampleFrom(device, sampleRate)
+        if (from == null || device == null) {
+            rateNoteText.visibility = View.GONE
+            return
+        }
+        rateNoteText.text = getString(
+            R.string.rate_downsample, device.label,
+            AudioFormatSpec.hzLabel(from), AudioFormatSpec.hzLabel(sampleRate)
+        )
+        rateNoteText.visibility = View.VISIBLE
+    }
+
+    /**
+     * Warn when the chosen input can't run at the chosen sample rate natively — USB interfaces are
+     * routinely 48 kHz-only, so the app's 44.1 kHz default costs a silent resample. Tapping the
+     * warning adopts the device's own rate, when that's one we can offer.
+     */
+    private fun updateRateWarning() {
+        // `offered` is the per-format list, so the tap-to-fix rate is always one we can select.
+        val advice = InputDevices.rateAdvice(selectedInput, sampleRate, supportedRates())
+        val device = selectedInput
+        if (advice == null || device == null) {
+            rateWarningText.visibility = View.GONE
+            rateWarningText.setOnClickListener(null)
+            return
+        }
+        val supported = AudioFormatSpec.hzListLabel(advice.supported)
+        val current = AudioFormatSpec.hzLabel(sampleRate)
+        val suggested = advice.suggested
+        if (suggested == null) {
+            rateWarningText.text =
+                getString(R.string.rate_mismatch, device.label, supported, current)
+            rateWarningText.setOnClickListener(null)
+            rateWarningText.isClickable = false
+        } else {
+            rateWarningText.text = getString(
+                R.string.rate_mismatch_fix, device.label, supported,
+                AudioFormatSpec.hzLabel(suggested)
+            )
+            rateWarningText.setOnClickListener {
+                sampleRate = suggested
+                refreshControls()
+            }
+        }
+        rateWarningText.visibility = View.VISIBLE
     }
 
     private fun updateStorage() {
@@ -187,11 +268,12 @@ class PreRecordDialog : DialogFragment() {
     }
 
     private fun pickSampleRate() {
-        val labels = AudioFormatSpec.SAMPLE_RATES.map { formatHz(it) }.toTypedArray()
+        val rates = supportedRates()
+        val labels = rates.map { AudioFormatSpec.hzLabel(it) }.toTypedArray()
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.sample_rate_title)
             .setItems(labels) { _, which ->
-                sampleRate = AudioFormatSpec.SAMPLE_RATES[which]
+                sampleRate = rates[which]
                 refreshControls()
             }
             .show()
@@ -225,9 +307,6 @@ class PreRecordDialog : DialogFragment() {
         onConfirmed?.invoke(base, currentSpec())
         dialog.dismiss()
     }
-
-    private fun formatHz(hz: Int): String =
-        if (hz % 1000 == 0) "${hz / 1000} kHz" else String.format("%.3g kHz", hz / 1000.0)
 
     companion object {
         private const val ARG_SUGGESTED_NAME = "suggested_name"

@@ -1,9 +1,11 @@
 package com.lithic.voicerecorder
 
 import android.annotation.SuppressLint
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat as AndroidAudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.SystemClock
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -18,8 +20,43 @@ import kotlin.concurrent.thread
 class PcmRecorder(
     private val spec: AudioFormatSpec,
     private val outputFile: File,
-    private val analyzer: SpectrumAnalyzer?
+    private val analyzer: SpectrumAnalyzer?,
+    initialGainDb: Int = 0,
+    initialInput: AudioDeviceInfo? = null,
+    /** `MediaRecorder.AudioSource` constant; fixed for the life of the AudioRecord. */
+    private val audioSource: Int = MediaRecorder.AudioSource.MIC
 ) : Recorder {
+
+    /** Cached linear multiplier so the capture loop never does a pow() per buffer. */
+    @Volatile private var gainLinear: Float = Gain.linear(initialGainDb)
+
+    @Volatile private var _gainDb: Int = initialGainDb
+    override var gainDb: Int
+        get() = _gainDb
+        set(value) {
+            val clamped = value.coerceIn(Gain.MIN_DB, Gain.MAX_DB)
+            _gainDb = clamped
+            gainLinear = Gain.linear(clamped)
+        }
+
+    @Volatile private var _preferredInput: AudioDeviceInfo? = initialInput
+    override var preferredInput: AudioDeviceInfo?
+        get() = _preferredInput
+        set(value) {
+            _preferredInput = value
+            // AudioRecord accepts this on a running stream, so a change mid-recording re-routes
+            // capture without interrupting the file (null = clear the preference).
+            try { audioRecord?.setPreferredDevice(value) } catch (_: Throwable) {}
+        }
+
+    override val routedInputLabel: String?
+        get() = audioRecord?.routedDevice?.let { InputDevices.optionFor(it).label }
+
+    @Volatile override var lastClipElapsedMs: Long = 0L
+        private set
+
+    @Volatile override var clippedSamples: Long = 0L
+        private set
 
     @Volatile private var recording = false
     @Volatile private var paused = false
@@ -45,7 +82,7 @@ class PcmRecorder(
         val bufferSize = minBuffer * 2
 
         val ar = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
+            audioSource,
             spec.sampleRate,
             channelMask,
             AndroidAudioFormat.ENCODING_PCM_16BIT,
@@ -55,6 +92,9 @@ class PcmRecorder(
             ar.release()
             throw IllegalStateException("AudioRecord failed to initialise")
         }
+        // Route to the chosen mic (USB interface, headset, …) before capture starts. It's only a
+        // hint — the UI reports routedDevice so the user can see what actually happened.
+        _preferredInput?.let { ar.setPreferredDevice(it) }
         audioRecord = ar
 
         val enc = PcmEncoderFactory.create(spec, outputFile)
@@ -82,6 +122,12 @@ class PcmRecorder(
                     }
                     val read = ar.read(buffer, 0, buffer.size)
                     if (read > 0) {
+                        // Gain first, so the file, the meter and the clip warning all agree.
+                        val clipped = Gain.apply(buffer, read, gainLinear)
+                        if (clipped > 0) {
+                            clippedSamples += clipped
+                            lastClipElapsedMs = SystemClock.elapsedRealtime()
+                        }
                         enc.encode(buffer, read)
                         analyzer?.push(buffer, read, spec.channels)
                     } else if (read < 0 && !paused) {

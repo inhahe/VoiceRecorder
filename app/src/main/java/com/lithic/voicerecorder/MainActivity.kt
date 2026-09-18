@@ -4,6 +4,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -26,12 +29,23 @@ class MainActivity : AppCompatActivity() {
     private var bound = false
 
     private val handler = Handler(Looper.getMainLooper())
+    private var tickCount = 0
     private val timerTick = object : Runnable {
         override fun run() {
             updateTimer()
             updateSpectrum()
+            updateClipIndicator()
+            // Routing rarely changes and each read is a native call, so poll it once a second
+            // rather than on every 50 ms frame.
+            if (tickCount++ % 20 == 0) updateRoutedInput()
             handler.postDelayed(this, 50)
         }
+    }
+
+    /** Redraws the input row when a mic is plugged in or pulled out while the app is on screen. */
+    private val deviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = refreshInputRow()
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) = refreshInputRow()
     }
 
     // --- permission launchers -------------------------------------------------
@@ -52,6 +66,10 @@ class MainActivity : AppCompatActivity() {
             service = local.service
             bound = true
             service?.onStopped = { file, error -> runOnUiThread { onRecordingStopped(file, error) } }
+            // The service may have been recording since before this Activity existed.
+            service?.gainDb = settings.gainDb
+            service?.inputDeviceKey = settings.inputDeviceKey
+            service?.captureSource = settings.captureSource
             refreshUi()
         }
 
@@ -81,11 +99,101 @@ class MainActivity : AppCompatActivity() {
         binding.openStorageAccessButton.setOnClickListener {
             allFilesAccessLauncher.launch(PermissionUtil.allFilesAccessIntent(this))
         }
+        binding.inputRow.setOnClickListener { showInputPicker() }
+        setupGainControl()
+    }
+
+    // --- input device ---------------------------------------------------------
+
+    /**
+     * Single-choice picker over the currently attached capture devices, plus "Automatic". Like the
+     * gain slider this works during recording too: the service re-routes the live stream.
+     */
+    private fun showInputPicker() {
+        val options = InputDevices.options(this)
+        val labels = (listOf(getString(R.string.input_automatic)) + options.map { it.label })
+        val keys = listOf(InputDevices.AUTOMATIC) + options.map { it.key }
+        val current = settings.inputDeviceKey
+        // A remembered-but-absent device has no row of its own; fall back to highlighting nothing.
+        val checked = keys.indexOfFirst { it == current }
+            .let { if (it >= 0) it else InputDevices.match(options, current)?.let { m -> keys.indexOf(m.key) } ?: -1 }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.input_picker_title)
+            .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, which ->
+                applyInput(keys[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun applyInput(key: String) {
+        settings.inputDeviceKey = key
+        service?.inputDeviceKey = key
+        refreshInputRow()
+    }
+
+    private fun refreshInputRow() {
+        binding.inputValue.text = InputDevices.summary(InputDevices.options(this), settings.inputDeviceKey)
+        updateRoutedInput()
+    }
+
+    /**
+     * `setPreferredDevice` is a hint, not a guarantee, so while recording we show what capture is
+     * actually routed to — and say so plainly when it isn't what was asked for.
+     */
+    private fun updateRoutedInput() {
+        val routed = service?.routedInputLabel()
+        if (routed == null) {
+            binding.inputRouted.visibility = android.view.View.GONE
+            return
+        }
+        val wanted = settings.inputDeviceKey
+        val matched = wanted.isEmpty() ||
+            InputDevices.match(InputDevices.options(this), wanted)?.label == routed
+        binding.inputRouted.text = getString(
+            if (matched) R.string.input_routed else R.string.input_routed_mismatch, routed
+        )
+        binding.inputRouted.visibility = android.view.View.VISIBLE
+    }
+
+    // --- mic gain -------------------------------------------------------------
+
+    /**
+     * The gain slider works before *and* during recording: the service pushes changes straight into
+     * the running capture loop. Tapping the dB readout snaps back to 0 dB.
+     */
+    private fun setupGainControl() {
+        binding.gainSlider.max = Gain.MAX_DB - Gain.MIN_DB
+        binding.gainSlider.progress = settings.gainDb - Gain.MIN_DB
+        binding.gainValue.text = Gain.label(settings.gainDb)
+
+        binding.gainSlider.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                applyGain(progress + Gain.MIN_DB)
+            }
+            override fun onStartTrackingTouch(bar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(bar: android.widget.SeekBar?) {}
+        })
+
+        binding.gainValue.setOnClickListener {
+            if (settings.gainDb == 0) return@setOnClickListener
+            binding.gainSlider.progress = -Gain.MIN_DB // fires onProgressChanged -> applyGain(0)
+            Toast.makeText(this, R.string.gain_reset, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun applyGain(db: Int) {
+        settings.gainDb = db
+        service?.gainDb = db
+        binding.gainValue.text = Gain.label(db)
     }
 
     override fun onStart() {
         super.onStart()
         bindService(Intent(this, RecordingService::class.java), connection, Context.BIND_AUTO_CREATE)
+        audioManager().registerAudioDeviceCallback(deviceCallback, handler)
         handler.post(timerTick)
     }
 
@@ -100,6 +208,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         handler.removeCallbacks(timerTick)
+        audioManager().unregisterAudioDeviceCallback(deviceCallback)
         if (bound) {
             service?.onStopped = null
             unbindService(connection)
@@ -254,7 +363,13 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton(R.string.ok, null)
                 .show()
         } else if (file != null) {
-            Snackbar.make(binding.root, getString(R.string.saved_as, file.name), Snackbar.LENGTH_LONG).show()
+            val clipped = (service?.clippedSamples ?: 0L) > 0L
+            val message = if (clipped) {
+                getString(R.string.saved_as_clipped, file.name)
+            } else {
+                getString(R.string.saved_as, file.name)
+            }
+            Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
         }
     }
 
@@ -282,11 +397,15 @@ class MainActivity : AppCompatActivity() {
 
         binding.folderPath.text = settings.saveDirectory ?: getString(R.string.no_folder_chosen)
 
+        // Picked up here (not just on bind) because Settings can change it while we're stopped.
+        service?.captureSource = settings.captureSource
+        refreshInputRow()
+
         val spec = settings.defaultSpec()
         binding.defaultFormatText.text = getString(
             R.string.default_summary,
             spec.format.displayName,
-            spec.sampleRate / 1000,
+            AudioFormatSpec.hzLabel(spec.sampleRate),
             if (spec.format.compressed) "${spec.bitrateKbps} kbps" else getString(R.string.lossless)
         )
 
@@ -304,6 +423,14 @@ class MainActivity : AppCompatActivity() {
         }
         updateTimer()
     }
+
+    private fun updateClipIndicator() {
+        binding.clipText.visibility =
+            if (service?.isClipping() == true) android.view.View.VISIBLE else android.view.View.INVISIBLE
+    }
+
+    private fun audioManager(): AudioManager =
+        getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private fun updateSpectrum() {
         if (service?.isRecording == true) {

@@ -14,8 +14,8 @@ android {
         // Single source of truth for the version. Bump on every change (see CLAUDE.md):
         // versionName is the semver shown to users and used for the GitHub release tag,
         // versionCode must strictly increase or Android refuses the update.
-        versionCode = 8
-        versionName = "0.8.0"
+        versionCode = 15
+        versionName = "0.12.3"
     }
 
     buildTypes {

@@ -113,6 +113,32 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
+        <!-- Microphone processing (platform voice chain vs raw capture) -->
+        <LinearLayout
+            android:id="@+id/settingCaptureSource"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground"
+            android:paddingVertical="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/capture_source_setting"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/valueCaptureSource"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/dim_text"
+                android:textSize="14sp" />
+        </LinearLayout>
+
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"

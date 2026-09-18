@@ -2,6 +2,7 @@ package com.lithic.voicerecorder
 
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
+import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import java.io.File
@@ -33,12 +34,12 @@ object PcmEncoderFactory {
         AudioFormat.WAV -> WavPcmEncoder(spec, outputFile)
         AudioFormat.M4A -> MediaCodecPcmEncoder(
             spec, outputFile,
-            mime = MediaFormat.MIMETYPE_AUDIO_AAC,
+            mime = requireNotNull(AudioFormat.M4A.mime),
             muxerOutputFormat = MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
         )
         AudioFormat.OPUS -> MediaCodecPcmEncoder(
             spec, outputFile,
-            mime = MediaFormat.MIMETYPE_AUDIO_OPUS,
+            mime = requireNotNull(AudioFormat.OPUS.mime),
             // OGG muxing (required for Opus) is API 29+; the format itself is already gated there.
             muxerOutputFormat = MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG
         )
@@ -154,7 +155,7 @@ class MediaCodecPcmEncoder(
                 setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
             }
         }
-        val c = MediaCodec.createEncoderByType(mime)
+        val c = createEncoderFor(format)
         c.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         c.start()
         codec = c
@@ -207,6 +208,21 @@ class MediaCodecPcmEncoder(
         codec = null
         muxer = null
         outputFile.delete()
+    }
+
+    /**
+     * Resolves the encoder through [MediaCodecList.findEncoderForFormat] — the same call
+     * [SampleRateSupport] probes with — so the rate list the UI offers and the codec that actually
+     * gets configured cannot disagree. Falls back to `createEncoderByType` if the lookup yields
+     * nothing, matching the "permissive on failure" stance of the probe.
+     */
+    private fun createEncoderFor(format: MediaFormat): MediaCodec {
+        val name = try {
+            MediaCodecList(MediaCodecList.REGULAR_CODECS).findEncoderForFormat(format)
+        } catch (_: Throwable) {
+            null
+        }
+        return if (name != null) MediaCodec.createByCodecName(name) else MediaCodec.createEncoderByType(mime)
     }
 
     private fun signalEndOfStream() {

@@ -32,6 +32,7 @@ class SettingsActivity : AppCompatActivity() {
         setupSampleRate()
         setupBitrate()
         setupChannels()
+        setupCaptureSource()
         setupFolder()
         setupFilename()
         setupReuseName()
@@ -57,13 +58,18 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /** Rates this device can record in the *default* format — the picker never offers a dead one. */
+    private fun supportedRates(): List<Int> =
+        SampleRateSupport.supported(settings.defaultFormat, settings.channels)
+
     private fun setupSampleRate() {
         binding.settingSampleRate.setOnClickListener {
-            val labels = AudioFormatSpec.SAMPLE_RATES.map { hzLabel(it) }.toTypedArray()
+            val rates = supportedRates()
+            val labels = rates.map { hzLabel(it) }.toTypedArray()
             AlertDialog.Builder(this)
                 .setTitle(R.string.sample_rate_title)
                 .setItems(labels) { _, which ->
-                    settings.defaultSampleRate = AudioFormatSpec.SAMPLE_RATES[which]
+                    settings.defaultSampleRate = rates[which]
                     refresh()
                 }
                 .show()
@@ -92,6 +98,32 @@ class SettingsActivity : AppCompatActivity() {
                     settings.channels = if (which == 0) 1 else 2
                     refresh()
                 }
+                .show()
+        }
+    }
+
+    /**
+     * The audio source is fixed when `AudioRecord` is built, so this is a defaults-screen setting
+     * (no per-recording override) and the summary says it takes effect next time.
+     */
+    private fun setupCaptureSource() {
+        binding.settingCaptureSource.setOnClickListener {
+            val labels = arrayOf(
+                getString(R.string.capture_source_processed),
+                getString(R.string.capture_source_raw)
+            )
+            AlertDialog.Builder(this)
+                .setTitle(R.string.capture_source_title)
+                .setSingleChoiceItems(
+                    labels,
+                    if (settings.captureSource == CaptureSource.RAW) 1 else 0
+                ) { dialog, which ->
+                    settings.captureSource =
+                        if (which == 1) CaptureSource.RAW else CaptureSource.PROCESSED
+                    dialog.dismiss()
+                    refresh()
+                }
+                .setNegativeButton(R.string.cancel, null)
                 .show()
         }
     }
@@ -156,6 +188,12 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun refresh() {
         val s = settings
+        // Changing the default format (or channels) can strand the stored rate — 48 kHz-only Opus
+        // after a 96 kHz WAV default, say. Snap it here so the screen never *shows* a rate that a
+        // recording would silently move off, and so settings written by an older build get fixed up.
+        val snapped = AudioFormatSpec.snap(s.defaultSampleRate, supportedRates())
+        if (snapped != s.defaultSampleRate) s.defaultSampleRate = snapped
+
         binding.valueFormat.text = s.defaultFormat.displayName
         binding.valueSampleRate.text = hzLabel(s.defaultSampleRate)
         binding.valueBitrate.text = if (s.defaultFormat.compressed) {
@@ -168,6 +206,15 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.valueChannels.text =
             if (s.channels >= 2) getString(R.string.stereo) else getString(R.string.mono)
+
+        // Say plainly when "raw" had to fall back, rather than implying the request was honoured.
+        binding.valueCaptureSource.text = when {
+            s.captureSource == CaptureSource.PROCESSED ->
+                getString(R.string.capture_source_processed_summary)
+            CaptureSource.unprocessedSupported(this) ->
+                getString(R.string.capture_source_raw_summary)
+            else -> getString(R.string.capture_source_raw_fallback)
+        }
         binding.valueFolder.text = s.saveDirectory ?: getString(R.string.no_folder_chosen)
         binding.valueFilename.text = try {
             "${s.suggestedBaseName()}.${s.defaultFormat.extension}"
@@ -186,6 +233,5 @@ class SettingsActivity : AppCompatActivity() {
         binding.settingRecentNames.alpha = if (recent.isEmpty()) 0.4f else 1f
     }
 
-    private fun hzLabel(hz: Int): String =
-        if (hz % 1000 == 0) "${hz / 1000} kHz" else "$hz Hz"
+    private fun hzLabel(hz: Int): String = AudioFormatSpec.hzLabel(hz)
 }

@@ -10,6 +10,11 @@ built-in directory navigator.
   `known-issues.md`.)*
 - **Per-recording overrides:** the pre-record dialog lets you change the format, sample rate and
   (for compressed formats) the bitrate for just that recording, on top of the configurable defaults.
+- **Sample rates follow the hardware, not a hardcoded list:** the rates offered are probed per format
+  on *your* device, so WAV reaches **88.2 / 96 kHz** where the hardware allows (typically a decent
+  USB interface) instead of being capped at 48 kHz. The same probe works the other way too — Opus is
+  a 48 kHz-family codec, so it is no longer offered at 44.1 kHz, a rate it cannot actually encode.
+  Changing format moves the chosen rate to the nearest one that format supports rather than failing.
 - **Configurable defaults:** set the default format, sample rate, bitrate, channel count (mono/
   stereo) and filename pattern in **Settings**.
 - **Custom folder navigator:** browse the filesystem, drill in/out, **create new folders**, and pick
@@ -32,6 +37,34 @@ built-in directory navigator.
   settings" until you unlock it); the note disappears once access is granted.
 - **Storage capacity readout:** the main screen and the pre-record dialog show approximately how many
   hours of audio will fit in the target folder at the current settings.
+- **Input selection:** an **Input** row on the home screen lists every attached capture device —
+  the phone's own mic, a wired or Bluetooth headset, and **USB microphones / audio interfaces** —
+  and lets you pick which one to record from (default: whatever Android picks). The choice is
+  remembered across reconnects (it's stored by device type + name, not by the id Android reshuffles
+  on every unplug), the list updates live when you plug something in, and while recording the app
+  shows *"Recording from: …"* so you can confirm the USB mic is really the one being used — Android
+  treats the choice as a hint, not a guarantee. You can switch inputs mid-recording.
+- **Sample-rate warning:** USB interfaces are often 48 kHz-only, so recording them at the app's
+  44.1 kHz default costs a silent resample. The pre-record dialog reads what the input device
+  actually supports and warns — *"USB Audio CODEC (USB) records at 48 kHz — tap to record at 48 kHz
+  instead"* — with the fix one tap away. It also fires under the default **Automatic** input setting,
+  since that's where a plugged-in USB mic gets used without you choosing it.
+- **Downsampling notice:** the opposite case — asking for *less* than the mic captures — gets a
+  quieter line in dim grey: *"Phone microphone captures up to 48 kHz; this will be resampled down to
+  8 kHz."* There's no tap-to-fix, because there's nothing to fix: recording below the hardware's
+  ceiling is usually the whole point (smaller files), so the app states the trade rather than
+  warning about it. Only one of the two lines ever shows at a time.
+- **Microphone processing:** **Settings → Microphone processing** chooses between Android's tuned
+  voice chain (noise reduction + auto-gain, best for speech into the phone's own mic) and raw
+  capture (best for a USB or line-level mic that's already clean). On devices with no truly
+  unprocessed mode the app uses the lowest-processing input available and says so, rather than
+  pretending the request was honoured. Fixed for the duration of a recording, so it applies from the
+  next one.
+- **Mic gain:** a −20 … +24 dB slider on the home screen, adjustable **before and during** recording
+  (changes take effect on the next captured buffer). Tap the dB readout to snap back to 0 dB. Gain is
+  applied in software to the captured samples, so the file and the spectrum meter match; a red
+  **CLIP** indicator lights while samples are clamping, and if anything clipped, the "saved" message
+  says so. The setting persists between recordings.
 - **Live frequency analyzer:** while recording, a small real-time spectrum meter (FFT-based bars)
   is shown on the home screen for *every* format, and hidden again when you stop.
 - **Foreground service:** recording runs in a `microphone` foreground service with an ongoing
@@ -83,10 +116,14 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 | `Recorder.kt` | `Recorder` interface + `RecorderFactory`. |
 | `PcmRecorder.kt` | The single capture engine: one `AudioRecord` reads PCM and tees it to the encoder + analyzer. |
 | `PcmEncoder.kt` | `PcmEncoder` sinks — `WavPcmEncoder` (RIFF/WAVE) and `MediaCodecPcmEncoder` (AAC-in-MP4, Opus-in-Ogg). |
+| `Gain.kt` | Software input gain: dB↔linear, in-place scaling of 16-bit PCM, clip counting. |
+| `InputDevices.kt` | Capture-device enumeration, labelling, the reconnect-stable key the chosen input is persisted as, and the device-vs-requested sample-rate advice. |
+| `CaptureSource.kt` | Processed vs raw capture: maps the preference onto a `MediaRecorder.AudioSource`, with the fallback for devices lacking `UNPROCESSED`. |
 | `SpectrumAnalyzer.kt` | Windows/FFTs the PCM stream into log-spaced 0..1 magnitude bands. |
 | `SpectrumView.kt` | Custom view that eases/animates the analyzer bands while recording. |
 | `Fft.kt` | Dependency-free radix-2 FFT. |
-| `AudioFormatSpec.kt` | Format enum + resolved spec; bytes/second estimation. |
+| `AudioFormatSpec.kt` | Format enum (incl. each format's encoder mime) + resolved spec; candidate rate/bitrate lists, kHz labelling, rate snapping, bytes/second estimation. |
+| `SampleRateSupport.kt` | Probes which sample rates this device can actually record in each format — capture and encoder each get a veto. Cached per format+channels. |
 | `Settings.kt` | SharedPreferences-backed defaults, save dir, filename pattern, recent-filename MRU list. |
 | `StorageUtil.kt` | Free-space / available-recording-time helpers and unique-filename resolution. |
 | `PermissionUtil.kt` | Mic / notification / storage (incl. All-files-access) permission logic. |

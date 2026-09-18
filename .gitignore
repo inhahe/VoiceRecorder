@@ -14,3 +14,12 @@
 # Personal scratch / working notes (not part of the app)
 /todo.txt
 /wma.txt
+
+# Local-only, mirroring the exclude list copy-to-github.bat used to apply now
+# that we publish straight from this directory.
+todo.txt
+wma.txt
+CLAUDE.md
+# every .bat is a local dev script -- gradlew.bat is the Gradle wrapper, not ours
+*.bat
+!gradlew.bat

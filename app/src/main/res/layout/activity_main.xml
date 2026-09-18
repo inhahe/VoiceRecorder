@@ -99,6 +99,101 @@
             android:layout_marginTop="16dp"
             android:visibility="gone" />
 
+        <!-- Input device: tap to pick the mic (built-in, USB interface, headset…) -->
+        <LinearLayout
+            android:id="@+id/inputRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="?attr/selectableItemBackground"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/input_label"
+                android:textColor="@color/dim_text"
+                android:textSize="12sp"
+                android:textAllCaps="true" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/inputValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:gravity="end"
+                android:text="@string/input_automatic"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/inputRouted"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="end"
+            android:text=""
+            android:textColor="@color/dim_text"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <!-- Mic gain: adjustable before and during recording -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/gain_label"
+                android:textColor="@color/dim_text"
+                android:textSize="12sp"
+                android:textAllCaps="true" />
+
+            <TextView
+                android:id="@+id/clipText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/clip_warning"
+                android:textColor="@color/warn_red"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:visibility="invisible" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/gainValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:padding="4dp"
+                android:text="0 dB"
+                android:textSize="16sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/gainSlider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/recordButton"
             android:layout_width="match_parent"

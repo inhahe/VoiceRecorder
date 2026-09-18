@@ -40,6 +40,31 @@ class Settings(context: Context) {
         get() = prefs.getInt(KEY_CHANNELS, 1).coerceIn(1, 2)
         set(value) = prefs.edit().putInt(KEY_CHANNELS, value.coerceIn(1, 2)).apply()
 
+    /**
+     * Digital input gain in dB applied while capturing (see [Gain]). Persisted so the level you
+     * settled on is still there next time; the home-screen slider writes it live.
+     */
+    var gainDb: Int
+        get() = prefs.getInt(KEY_GAIN_DB, 0).coerceIn(Gain.MIN_DB, Gain.MAX_DB)
+        set(value) = prefs.edit().putInt(KEY_GAIN_DB, value.coerceIn(Gain.MIN_DB, Gain.MAX_DB)).apply()
+
+    /**
+     * Which microphone to record from, as an [InputDevices.InputOption.key] — a *type + product
+     * name* pair rather than an `AudioDeviceInfo` id, because ids are reassigned on every unplug.
+     * [InputDevices.AUTOMATIC] (the default) lets Android choose.
+     */
+    var inputDeviceKey: String
+        get() = prefs.getString(KEY_INPUT_DEVICE, InputDevices.AUTOMATIC) ?: InputDevices.AUTOMATIC
+        set(value) = prefs.edit().putString(KEY_INPUT_DEVICE, value).apply()
+
+    /**
+     * Whether the platform's voice processing is applied to captured audio (see [CaptureSource]).
+     * Fixed for the duration of a recording, so it only takes effect from the next one.
+     */
+    var captureSource: CaptureSource
+        get() = CaptureSource.fromId(prefs.getString(KEY_CAPTURE_SOURCE, null))
+        set(value) = prefs.edit().putString(KEY_CAPTURE_SOURCE, value.id).apply()
+
     /** Absolute path of the directory new recordings are saved into (may be null before first-run setup). */
     var saveDirectory: String?
         get() = prefs.getString(KEY_SAVE_DIR, null)
@@ -86,13 +111,24 @@ class Settings(context: Context) {
 
     fun clearRecentBaseNames() = prefs.edit().remove(KEY_RECENT_NAMES).apply()
 
-    /** Resolve the current default spec from the stored defaults. */
-    fun defaultSpec(): AudioFormatSpec = AudioFormatSpec(
-        format = defaultFormat.let { if (it.isSupportedOnThisDevice) it else AudioFormat.M4A },
-        sampleRate = defaultSampleRate,
-        bitrateKbps = defaultBitrateKbps,
-        channels = channels
-    )
+    /**
+     * Resolve the current default spec from the stored defaults.
+     *
+     * Both the format and the rate are *validated against this device*, not taken on trust: a stored
+     * format the device can't record falls back to M4A, and the rate is snapped to one the resulting
+     * format can actually encode here. Settings written by an older build — or on another device,
+     * via a backup restore — therefore can't produce a spec that fails at `start()`.
+     */
+    fun defaultSpec(): AudioFormatSpec {
+        val format = defaultFormat.let { if (it.isSupportedOnThisDevice) it else AudioFormat.M4A }
+        val ch = channels
+        return AudioFormatSpec(
+            format = format,
+            sampleRate = AudioFormatSpec.snap(defaultSampleRate, SampleRateSupport.supported(format, ch)),
+            bitrateKbps = defaultBitrateKbps,
+            channels = ch
+        )
+    }
 
     /** Build a filename (without extension) from the timestamp pattern. */
     fun suggestedBaseName(now: Date = Date()): String =
@@ -119,6 +155,9 @@ class Settings(context: Context) {
         private const val KEY_CHANNELS = "channels"
         private const val KEY_SAVE_DIR = "save_dir"
         private const val KEY_FILENAME_PATTERN = "filename_pattern"
+        private const val KEY_GAIN_DB = "gain_db"
+        private const val KEY_INPUT_DEVICE = "input_device_key"
+        private const val KEY_CAPTURE_SOURCE = "capture_source"
         private const val KEY_REUSE_LAST_NAME = "reuse_last_filename"
         private const val KEY_RECENT_NAMES = "recent_base_names"
 

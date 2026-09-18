@@ -100,6 +100,32 @@
                 android:text="Bitrate" />
         </LinearLayout>
 
+        <!-- Sample-rate mismatch against the chosen input device; tap to adopt its native rate -->
+        <TextView
+            android:id="@+id/pr_rate_warning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="?attr/selectableItemBackground"
+            android:paddingVertical="4dp"
+            android:text=""
+            android:textSize="13sp"
+            android:textColor="@color/warn_red"
+            android:visibility="gone" />
+
+        <!-- Recording below the input's ceiling: a statement of fact, not a warning. Deliberately
+             dim and not clickable — unlike pr_rate_warning above, there is nothing to fix. -->
+        <TextView
+            android:id="@+id/pr_rate_note"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:paddingVertical="4dp"
+            android:text=""
+            android:textSize="12sp"
+            android:textColor="@color/dim_text"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/pr_storage"
             android:layout_width="match_parent"

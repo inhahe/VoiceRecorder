@@ -40,6 +40,46 @@ class RecordingService : Service() {
     /** Latest 0..1 frequency-band magnitudes for the recording meter (empty when idle). */
     fun spectrum(): FloatArray = if (isRecording) analyzer.bands else EMPTY_SPECTRUM
 
+    /**
+     * Digital input gain in dB, applied to everything captured from here on. Setting it while a
+     * recording is in progress takes effect immediately; otherwise it seeds the next recording.
+     */
+    var gainDb: Int = 0
+        set(value) {
+            field = value.coerceIn(Gain.MIN_DB, Gain.MAX_DB)
+            recorder?.gainDb = field
+        }
+
+    /**
+     * Which capture device to record from, as a persisted [InputDevices.InputOption.key]
+     * ([InputDevices.AUTOMATIC] = let Android choose). Setting it during a recording re-routes the
+     * live stream; otherwise it seeds the next one.
+     */
+    var inputDeviceKey: String = InputDevices.AUTOMATIC
+        set(value) {
+            field = value
+            recorder?.preferredInput = InputDevices.resolve(this, value)
+        }
+
+    /**
+     * Whether platform voice processing is applied. Unlike [gainDb] and [inputDeviceKey] this is
+     * baked into `AudioRecord` at construction, so changing it only affects the *next* recording.
+     */
+    var captureSource: CaptureSource = CaptureSource.PROCESSED
+
+    /** Label of the device capture actually landed on, or null when idle. */
+    fun routedInputLabel(): String? = if (isRecording) recorder?.routedInputLabel else null
+
+    /** True while audio has clipped within the last [CLIP_HOLD_MS] — drives the CLIP indicator. */
+    fun isClipping(): Boolean {
+        val last = recorder?.lastClipElapsedMs ?: return false
+        return last > 0L && SystemClock.elapsedRealtime() - last < CLIP_HOLD_MS
+    }
+
+    /** Samples that clipped during the current (or just-finished) recording. */
+    var clippedSamples: Long = 0L
+        private set
+
     /** Absolute path of the file currently being written, or null when idle. */
     var currentFile: File? = null
         private set
@@ -75,7 +115,12 @@ class RecordingService : Service() {
         lastError = null
 
         outputFile.parentFile?.mkdirs()
-        val r = RecorderFactory.create(spec, outputFile, analyzer)
+        clippedSamples = 0L
+        val r = RecorderFactory.create(
+            spec, outputFile, analyzer, gainDb,
+            InputDevices.resolve(this, inputDeviceKey),
+            CaptureSource.androidSource(captureSource, CaptureSource.unprocessedSupported(this))
+        )
 
         startForegroundWithNotification(outputFile.name)
         try {
@@ -117,6 +162,8 @@ class RecordingService : Service() {
         if (!isRecording) return null
         val file = currentFile
         var error: String? = null
+        // Read the clip tally before the recorder is dropped; the UI reports it after saving.
+        clippedSamples = recorder?.clippedSamples ?: 0L
         try {
             recorder?.stop()
         } catch (t: Throwable) {
@@ -208,5 +255,8 @@ class RecordingService : Service() {
         private const val CHANNEL_ID = "recording"
         private const val NOTIFICATION_ID = 1001
         private val EMPTY_SPECTRUM = FloatArray(0)
+
+        /** How long the CLIP indicator stays lit after the last clipped sample. */
+        private const val CLIP_HOLD_MS = 1200L
     }
 }

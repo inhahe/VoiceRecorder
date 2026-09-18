@@ -16,9 +16,20 @@
     <string name="available_storage_label">Available recording time</string>
     <string name="no_folder_chosen">(no folder chosen yet)</string>
     <string name="lossless">lossless</string>
-    <string name="default_summary">%1$s · %2$d kHz · %3$s</string>
+    <!-- The rate arrives pre-formatted by AudioFormatSpec.hzLabel (it brings its own "kHz"), so
+         44100 reads "44.1 kHz" here as it does everywhere else, not "44 kHz". -->
+    <string name="default_summary">%1$s · %2$s · %3$s</string>
     <string name="storage_estimate">%1$s (%2$s free)</string>
     <string name="saved_as">Saved: %1$s</string>
+    <string name="saved_as_clipped">Saved: %1$s — audio clipped, try a lower gain</string>
+    <string name="input_label">Input</string>
+    <string name="input_automatic">Automatic (system default)</string>
+    <string name="input_picker_title">Record from</string>
+    <string name="input_routed">Recording from: %1$s</string>
+    <string name="input_routed_mismatch">Recording from: %1$s (requested device unavailable)</string>
+    <string name="gain_label">Mic gain</string>
+    <string name="clip_warning">Clip</string>
+    <string name="gain_reset">Gain reset to 0 dB</string>
     <string name="service_not_ready">Recorder service not ready, try again</string>
     <string name="recording_failed">Recording failed</string>
     <string name="ok">OK</string>
@@ -76,6 +87,9 @@
     <string name="bitrate_title">Bitrate</string>
     <string name="bitrate_value">Bitrate: %1$d kbps</string>
     <string name="bitrate_na">Bitrate doesn\'t apply to lossless WAV</string>
+    <string name="rate_mismatch">%1$s records at %2$s — %3$s will be resampled.</string>
+    <string name="rate_mismatch_fix">%1$s records at %2$s — tap to record at %3$s instead.</string>
+    <string name="rate_downsample">%1$s captures up to %2$s; this will be resampled down to %3$s.</string>
     <string name="filename_required">Enter a file name</string>
     <string name="filename_illegal">File name contains illegal characters</string>
     <string name="recent_names_title">Recent file names</string>
@@ -91,6 +105,14 @@
     <string name="channels_title">Channels</string>
     <string name="mono">Mono</string>
     <string name="stereo">Stereo</string>
+    <string name="capture_source_setting">Microphone processing</string>
+    <string name="capture_source_title">Microphone processing</string>
+    <string name="capture_source_processed">Voice processing (default)</string>
+    <string name="capture_source_raw">Raw / unprocessed</string>
+    <string name="capture_source_processed_summary">Voice processing — Android\'s noise reduction and auto-gain. Best for speech into the phone\'s own mic.</string>
+    <string name="capture_source_raw_summary">Raw — no noise reduction or auto-gain. Best for a USB or line-level mic that\'s already clean.</string>
+    <string name="capture_source_raw_fallback">Raw — this device has no truly unprocessed mode, so the lowest-processing input is used instead.</string>
+    <string name="capture_source_next_recording">Applies from the next recording</string>
     <string name="save_folder_setting">Save folder</string>
     <string name="filename_pattern_setting">Filename pattern</string>
     <string name="filename_pattern_title">Filename pattern</string>
