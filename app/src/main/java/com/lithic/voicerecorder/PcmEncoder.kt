@@ -8,6 +8,7 @@ import android.media.MediaMuxer
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * A sink that consumes raw 16-bit interleaved PCM and finalises a file in some container/codec.
@@ -22,11 +23,32 @@ interface PcmEncoder {
     /** Encode/append one PCM buffer ([len] valid bytes). Called only from the capture thread. */
     fun encode(data: ByteArray, len: Int)
 
-    /** Flush and finalise the output file. */
+    /** Flush and finalise the output file. A second call does nothing. */
     fun finish()
 
-    /** Best-effort abort that deletes any partial output. */
+    /**
+     * Best-effort abort that deletes any partial output. Only for a take with nothing worth
+     * keeping; see [endTake].
+     */
     fun abort()
+}
+
+/**
+ * Ends a take on [encoder]. Whatever was captured is finalised even when capture broke partway, so
+ * an error costs the rest of the recording rather than all of it. Only a take that failed before
+ * capturing anything is discarded, because there is nothing in it to keep.
+ *
+ * Returns the error to report: the capture [failure] if there was one, otherwise any failure to
+ * finalise. A failure to finalise never deletes the file: a part-written file can still be
+ * recovered, and a deleted one can't.
+ */
+fun endTake(encoder: PcmEncoder, failure: Throwable?, capturedBytes: Long): Throwable? {
+    try {
+        if (failure == null || capturedBytes > 0) encoder.finish() else encoder.abort()
+    } catch (t: Throwable) {
+        return failure ?: t
+    }
+    return failure
 }
 
 object PcmEncoderFactory {
@@ -47,21 +69,24 @@ object PcmEncoderFactory {
 }
 
 /**
- * Lossless 16-bit PCM to .wav. Writes a 44-byte placeholder RIFF/WAVE header, streams samples, and
- * patches the size fields on [finish].
+ * Lossless 16-bit PCM to .wav. Writes a complete RIFF/WAVE header up front with both sizes marked
+ * unknown, streams samples after it, and fills in the real sizes on [finish].
+ *
+ * The up-front header is what keeps a take that never reaches [finish] readable: if the app is
+ * killed or the phone dies mid-recording, ffmpeg and libsndfile read the unknown sizes as "to the
+ * end of the file". The 44 zero bytes this used to start with aren't recognised as WAV at all.
  */
 class WavPcmEncoder(
     private val spec: AudioFormatSpec,
     private val outputFile: File
 ) : PcmEncoder {
 
-    private val bitsPerSample = 16
     private var raf: RandomAccessFile? = null
 
     override fun start() {
         val f = RandomAccessFile(outputFile, "rw")
         f.setLength(0)
-        f.write(ByteArray(44)) // placeholder header, patched on finish()
+        f.write(header(dataBytes = null))
         raf = f
     }
 
@@ -72,28 +97,9 @@ class WavPcmEncoder(
     override fun finish() {
         val f = raf ?: return
         try {
-            val totalAudioLen = f.length() - 44
-            val totalDataLen = totalAudioLen + 36
-            val channels = spec.channels
-            val byteRate = spec.sampleRate * channels * bitsPerSample / 8
-            val blockAlign = channels * bitsPerSample / 8
-
+            val dataBytes = f.length() - HEADER_BYTES
             f.seek(0)
-            f.write('R'.code); f.write('I'.code); f.write('F'.code); f.write('F'.code)
-            f.writeLE32(totalDataLen.toInt())
-            f.write('W'.code); f.write('A'.code); f.write('V'.code); f.write('E'.code)
-
-            f.write('f'.code); f.write('m'.code); f.write('t'.code); f.write(' '.code)
-            f.writeLE32(16)
-            f.writeLE16(1)
-            f.writeLE16(channels)
-            f.writeLE32(spec.sampleRate)
-            f.writeLE32(byteRate)
-            f.writeLE16(blockAlign)
-            f.writeLE16(bitsPerSample)
-
-            f.write('d'.code); f.write('a'.code); f.write('t'.code); f.write('a'.code)
-            f.writeLE32(totalAudioLen.toInt())
+            f.write(header(dataBytes))
         } finally {
             f.close()
             raf = null
@@ -109,16 +115,40 @@ class WavPcmEncoder(
         outputFile.delete()
     }
 
-    private fun RandomAccessFile.writeLE16(value: Int) {
-        write(value and 0xff)
-        write((value shr 8) and 0xff)
+    /**
+     * The 44-byte RIFF/WAVE header for [dataBytes] of PCM. While that isn't known yet (null), both
+     * size fields are [UNKNOWN_SIZE]. The header is built in memory and written in one call, so it
+     * is never left half-updated.
+     */
+    private fun header(dataBytes: Long?): ByteArray {
+        val blockAlign = spec.channels * BITS_PER_SAMPLE / 8
+        return ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN).apply {
+            put("RIFF".toByteArray(Charsets.US_ASCII))
+            putInt(if (dataBytes == null) UNKNOWN_SIZE else (dataBytes + 36).toInt())
+            put("WAVE".toByteArray(Charsets.US_ASCII))
+            put("fmt ".toByteArray(Charsets.US_ASCII))
+            putInt(16) // fmt chunk size
+            putShort(1) // PCM
+            putShort(spec.channels.toShort())
+            putInt(spec.sampleRate)
+            putInt(spec.sampleRate * blockAlign) // byte rate
+            putShort(blockAlign.toShort())
+            putShort(BITS_PER_SAMPLE.toShort())
+            put("data".toByteArray(Charsets.US_ASCII))
+            putInt(dataBytes?.toInt() ?: UNKNOWN_SIZE)
+        }.array()
     }
 
-    private fun RandomAccessFile.writeLE32(value: Int) {
-        write(value and 0xff)
-        write((value shr 8) and 0xff)
-        write((value shr 16) and 0xff)
-        write((value shr 24) and 0xff)
+    companion object {
+        const val HEADER_BYTES = 44
+        private const val BITS_PER_SAMPLE = 16
+
+        /**
+         * Both size fields until [finish] knows the real ones: 0xFFFFFFFF, which ffmpeg and
+         * libsndfile read as "to the end of the file". A size of 0 would not do: libsndfile reads
+         * that as an empty file.
+         */
+        private const val UNKNOWN_SIZE = -1
     }
 }
 
@@ -184,15 +214,21 @@ class MediaCodecPcmEncoder(
         val c = codec
         val m = muxer
         if (c == null || m == null) {
-            abort()
+            // Already finished, or never fully started. Never delete from here. This used to call
+            // abort(), so finishing twice threw away the file the first call had just saved.
+            try { c?.release() } catch (_: Exception) {}
+            codec = null
             return
         }
         try {
             signalEndOfStream()
             while (!sawOutputEos) drainOutput(endOfStream = true)
         } finally {
+            // The muxer is stopped whatever happened above, even after a codec failure: stop()
+            // writes the container's index (the MP4 moov), and without it nothing captured so far
+            // would play.
             try { c.stop() } catch (_: Exception) {}
-            c.release()
+            try { c.release() } catch (_: Exception) {}
             try { if (muxerStarted) m.stop() } catch (_: Exception) {}
             try { m.release() } catch (_: Exception) {}
             codec = null

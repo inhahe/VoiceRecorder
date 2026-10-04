@@ -16,6 +16,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import java.io.File
 
@@ -29,12 +30,13 @@ import java.io.File
  * The line under the name field previews the file that will actually be written, including the
  * `_2`, `_3`, … suffix added when the name is already taken.
  *
- * On confirm it hands back the chosen filename + [AudioFormatSpec] to the host.
+ * On confirm it hands the chosen filename + [AudioFormatSpec] to the host as a fragment result
+ * under [REQUEST_KEY] (decode it with [baseNameOf] / [specOf]). It's a result rather than a
+ * callback because Android can recreate the dialog without the Activity that opened it, after the
+ * process is killed in the background or on a configuration change. A callback set by the old
+ * Activity is gone by then, so "Start recording" used to close the dialog and record nothing.
  */
 class PreRecordDialog : DialogFragment() {
-
-    /** Called with the final base filename (no extension) and the resolved spec. */
-    var onConfirmed: ((baseName: String, spec: AudioFormatSpec) -> Unit)? = null
 
     private lateinit var settings: Settings
     private lateinit var saveDir: File
@@ -65,11 +67,13 @@ class PreRecordDialog : DialogFragment() {
         settings = Settings(requireContext())
         saveDir = settings.saveDirectoryFile()
 
-        // Seed from stored defaults.
+        // Seed from stored defaults, or from this dialog's own earlier choices when Android is
+        // recreating it (see onSaveInstanceState).
         val defaults = settings.defaultSpec()
-        format = defaults.format
-        sampleRate = defaults.sampleRate
-        bitrateKbps = defaults.bitrateKbps
+        val saved = savedInstanceState
+        format = saved?.getString(STATE_FORMAT)?.let { AudioFormat.fromId(it) } ?: defaults.format
+        sampleRate = saved?.getInt(STATE_SAMPLE_RATE, defaults.sampleRate) ?: defaults.sampleRate
+        bitrateKbps = saved?.getInt(STATE_BITRATE, defaults.bitrateKbps) ?: defaults.bitrateKbps
         channels = defaults.channels
 
         val root = LayoutInflater.from(requireContext())
@@ -304,11 +308,58 @@ class PreRecordDialog : DialogFragment() {
             nameField.error = getString(R.string.filename_illegal)
             return
         }
-        onConfirmed?.invoke(base, currentSpec())
+        val spec = currentSpec()
+        parentFragmentManager.setFragmentResult(
+            REQUEST_KEY,
+            bundleOf(
+                RESULT_BASE_NAME to base,
+                RESULT_FORMAT to spec.format.id,
+                RESULT_SAMPLE_RATE to spec.sampleRate,
+                RESULT_BITRATE to spec.bitrateKbps,
+                RESULT_CHANNELS to spec.channels,
+            )
+        )
         dialog.dismiss()
     }
 
+    /**
+     * The per-recording overrides live in fields, not in views. The name field and the format
+     * spinner restore themselves, but these need saving by hand, or a recreated dialog would
+     * quietly go back to the defaults.
+     */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (!::settings.isInitialized) return // never set up, so nothing chosen yet
+        outState.putString(STATE_FORMAT, format.id)
+        outState.putInt(STATE_SAMPLE_RATE, sampleRate)
+        outState.putInt(STATE_BITRATE, bitrateKbps)
+    }
+
     companion object {
+        /** The fragment-result key the confirmed name and spec arrive under. */
+        const val REQUEST_KEY = "pre_record"
+
+        /** The base filename (no extension) from a [REQUEST_KEY] result. */
+        fun baseNameOf(result: Bundle): String = result.getString(RESULT_BASE_NAME).orEmpty()
+
+        /** The recording spec from a [REQUEST_KEY] result. */
+        fun specOf(result: Bundle): AudioFormatSpec = AudioFormatSpec(
+            format = AudioFormat.fromId(result.getString(RESULT_FORMAT)),
+            sampleRate = result.getInt(RESULT_SAMPLE_RATE),
+            bitrateKbps = result.getInt(RESULT_BITRATE),
+            channels = result.getInt(RESULT_CHANNELS),
+        )
+
+        private const val RESULT_BASE_NAME = "base_name"
+        private const val RESULT_FORMAT = "format"
+        private const val RESULT_SAMPLE_RATE = "sample_rate"
+        private const val RESULT_BITRATE = "bitrate_kbps"
+        private const val RESULT_CHANNELS = "channels"
+
+        private const val STATE_FORMAT = "state_format"
+        private const val STATE_SAMPLE_RATE = "state_sample_rate"
+        private const val STATE_BITRATE = "state_bitrate_kbps"
+
         private const val ARG_SUGGESTED_NAME = "suggested_name"
         private val ILLEGAL_FILENAME_CHARS = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
 

@@ -28,6 +28,13 @@ class SettingsActivity : AppCompatActivity() {
         settings = Settings(this)
         supportedFormats = AudioFormat.supported()
 
+        // A fragment result rather than a callback, so the folder still arrives if Android
+        // recreates this screen while the picker is open (see DirectoryPickerDialog).
+        supportFragmentManager.setFragmentResultListener(DirectoryPickerDialog.REQUEST_KEY, this) { _, result ->
+            settings.saveDirectory = DirectoryPickerDialog.pathOf(result)
+            refresh()
+        }
+
         setupFormat()
         setupSampleRate()
         setupBitrate()
@@ -130,14 +137,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun setupFolder() {
         binding.settingFolder.setOnClickListener {
-            val dialog = DirectoryPickerDialog.new(
-                settings.saveDirectory ?: Settings.defaultSaveDirectory().absolutePath
-            )
-            dialog.onDirectoryChosen = { path ->
-                settings.saveDirectory = path
-                refresh()
-            }
-            dialog.show(supportFragmentManager, "dir_picker")
+            DirectoryPickerDialog.new(settings.saveDirectory ?: Settings.defaultSaveDirectory().absolutePath)
+                .show(supportFragmentManager, "dir_picker")
         }
     }
 

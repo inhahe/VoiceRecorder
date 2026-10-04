@@ -44,6 +44,21 @@ built-in directory navigator.
   on every unplug), the list updates live when you plug something in, and while recording the app
   shows *"Recording from: …"* so you can confirm the USB mic is really the one being used — Android
   treats the choice as a hint, not a guarantee. You can switch inputs mid-recording.
+- **No silent fallback to the phone's mic:** if the input you chose isn't connected when you press
+  **Record**, the app tells you and asks you to pick one, instead of quietly recording from the
+  phone's microphone. Plugging the missing input in also works: the app carries on by itself. The
+  Input row turns red while the input is missing. If the input is unplugged *during* a recording,
+  the recording **pauses**, so the file gets a gap rather than a stretch from the wrong mic, and the
+  app asks again. It resumes on its own when you plug the input back in or choose another. A pause
+  you made yourself is never resumed for you. With the screen off, the notification reads *"Paused:
+  input disconnected"*. **Automatic** is the exception: it means "whatever Android picks", so it
+  still uses the phone's mic when nothing else is attached.
+- **An error doesn't cost the whole recording:** if capture fails partway (the mic stops
+  delivering audio, say), the recording stops at once and everything recorded up to that point is
+  saved. The app tells you so (*"Recording ended with an error … saved as …"*), even if it happened
+  while the app was in the background. WAV recordings are also written so that one cut off without
+  warning, by the app being killed or the phone dying, still opens in ffmpeg- and libsndfile-based
+  players and editors.
 - **Sample-rate warning:** USB interfaces are often 48 kHz-only, so recording them at the app's
   44.1 kHz default costs a silent resample. The pre-record dialog reads what the input device
   actually supports and warns — *"USB Audio CODEC (USB) records at 48 kHz — tap to record at 48 kHz
@@ -110,14 +125,14 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 
 | File | Role |
 |---|---|
-| `MainActivity.kt` | Home screen: record/stop, timer, storage readout, permission + first-run flow, service binding. |
+| `MainActivity.kt` | Home screen: record/stop, timer, storage readout, input picker + the "input not connected" prompt, permission + first-run flow, service binding. |
 | `SettingsActivity.kt` | Configure default format / sample rate / bitrate / channels / folder / filename pattern. |
-| `RecordingService.kt` | Foreground (`microphone`) service that owns the active recorder + the live [`SpectrumAnalyzer`]. |
+| `RecordingService.kt` | Foreground (`microphone`) service that owns the active recorder + the live [`SpectrumAnalyzer`], and pauses the recording if its chosen input is unplugged. |
 | `Recorder.kt` | `Recorder` interface + `RecorderFactory`. |
 | `PcmRecorder.kt` | The single capture engine: one `AudioRecord` reads PCM and tees it to the encoder + analyzer. |
-| `PcmEncoder.kt` | `PcmEncoder` sinks — `WavPcmEncoder` (RIFF/WAVE) and `MediaCodecPcmEncoder` (AAC-in-MP4, Opus-in-Ogg). |
+| `PcmEncoder.kt` | `PcmEncoder` sinks — `WavPcmEncoder` (RIFF/WAVE) and `MediaCodecPcmEncoder` (AAC-in-MP4, Opus-in-Ogg) — plus `endTake`, which finalises whatever a take captured, even after an error. |
 | `Gain.kt` | Software input gain: dB↔linear, in-place scaling of 16-bit PCM, clip counting. |
-| `InputDevices.kt` | Capture-device enumeration, labelling, the reconnect-stable key the chosen input is persisted as, and the device-vs-requested sample-rate advice. |
+| `InputDevices.kt` | Capture-device enumeration, labelling, the reconnect-stable key the chosen input is persisted as, the missing-input rules (ask, never fall back; when to pause and resume), and the device-vs-requested sample-rate advice. |
 | `CaptureSource.kt` | Processed vs raw capture: maps the preference onto a `MediaRecorder.AudioSource`, with the fallback for devices lacking `UNPROCESSED`. |
 | `SpectrumAnalyzer.kt` | Windows/FFTs the PCM stream into log-spaced 0..1 magnitude bands. |
 | `SpectrumView.kt` | Custom view that eases/animates the analyzer bands while recording. |

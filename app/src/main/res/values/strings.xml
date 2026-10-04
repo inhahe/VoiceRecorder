@@ -11,6 +11,7 @@
     <string name="status_idle">Ready</string>
     <string name="status_recording">Recording…</string>
     <string name="status_paused">Paused</string>
+    <string name="status_paused_input">Paused — input disconnected</string>
     <string name="save_folder_label">Save folder</string>
     <string name="default_format_label">Default format</string>
     <string name="available_storage_label">Available recording time</string>
@@ -27,17 +28,30 @@
     <string name="input_picker_title">Record from</string>
     <string name="input_routed">Recording from: %1$s</string>
     <string name="input_routed_mismatch">Recording from: %1$s (requested device unavailable)</string>
+    <!-- The chosen input isn't attached. Shown instead of recording from the phone's mic. -->
+    <string name="input_missing_title">Input not connected</string>
+    <string name="input_missing_message">%1$s isn\'t connected. Plug it in, or choose another input to record from.</string>
+    <string name="input_lost_title">Input disconnected</string>
+    <string name="input_lost_message">%1$s was disconnected, so recording is paused. Plug it back in to carry on, or choose another input.</string>
+    <string name="stay_paused">Stay paused</string>
+    <string name="input_resumed">Recording resumed — %1$s</string>
     <string name="gain_label">Mic gain</string>
     <string name="clip_warning">Clip</string>
     <string name="gain_reset">Gain reset to 0 dB</string>
     <string name="service_not_ready">Recorder service not ready, try again</string>
     <string name="recording_failed">Recording failed</string>
+    <!-- An error ended the recording, but what came before it was kept. Worded to fit both ways
+         that happens: capture breaking mid-take, and the file failing to finalise on Stop. -->
+    <string name="recording_ended_with_error">Recording ended with an error</string>
+    <string name="recording_ended_with_error_message">The recording hit an error: %1$s\n\nEverything recorded up to that point was saved as %2$s.</string>
     <string name="ok">OK</string>
 
     <!-- Notification -->
     <string name="notification_channel_name">Recording</string>
     <string name="notification_recording_title">Recording audio</string>
     <string name="notification_paused_title">Recording paused</string>
+    <string name="notification_input_lost_title">Paused: input disconnected</string>
+    <string name="notification_input_lost_text">Reconnect %1$s, or tap to choose another input</string>
 
     <!-- Welcome / permissions -->
     <string name="welcome_title">Welcome</string>

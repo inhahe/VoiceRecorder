@@ -32,8 +32,51 @@ larger. For WAV it is exact (PCM). Good enough for a capacity hint.
 ## Input selection is a hint
 `AudioRecord.setPreferredDevice()` asks the platform to route capture to a given device; it can be
 refused (returns false, or routing silently lands elsewhere). That is why the home screen reports
-`getRoutedDevice()` while recording rather than assuming the request took. If a device is refused
-there is nothing further the app can do — the fallback is Android's own mic priority.
+`getRoutedDevice()` while recording rather than assuming the request took.
+
+The two ways a choice can fail are treated differently:
+
+- **The device isn't attached.** Since 0.13 the app asks for another input instead of recording,
+  and pauses a recording whose input is unplugged (design.md, *A missing input asks*).
+- **The device is attached but routing lands elsewhere anyway.** That is still Android's call.
+  Catching it would mean acting on `getRoutedDevice()`, which can lag a re-route or read null
+  mid-switch, so pausing on it would risk stopping good recordings over a transient. The app records
+  and says so instead: "Recording from: Phone microphone (requested device unavailable)".
+
+## An unplugged input can leave a moment of phone-mic audio
+When the chosen input disappears mid-recording, Android re-routes the stream to its default mic by
+itself, and the app only learns of the removal from `AudioDeviceCallback` a moment later. Whatever
+the phone's mic captured in between ends up in the file just before the pause. That window should
+be a fraction of a second, but it has not been measured on hardware. No earlier signal exists:
+`getRoutedDevice()` is too expensive to poll per buffer (each call lists the audio ports over
+binder), and a routing listener fires no sooner than the re-route itself.
+
+## A pause for a lost input is silent
+With the screen off, the only sign that recording has paused for a lost input is the ongoing
+notification's text ("Paused: input disconnected"). Its channel is low-importance, so it makes no
+sound, and the pause goes unnoticed until the phone is next looked at. Plugging the input back in
+resumes by itself, so the common case of a cable knocked loose for a moment costs only a short gap.
+An input that stays gone costs everything after it. A high-importance alert, on a channel of its own
+so the ongoing notification stays quiet, would fix that if it turns out to matter.
+
+## A failed take is kept, but how usable it is depends on what failed
+Since 0.13.2, when capture fails partway the recording stops, and everything before the failure is
+finalised and kept (design.md, *A failed take keeps what it captured*). What that file is worth
+depends on the failure:
+
+- **The mic or `AudioRecord` failed** (the likely case: a read error). The encoder is healthy, so
+  the file finalises normally in every format. Verified for all three on the emulator.
+- **The encoder or muxer itself failed.** `finish()` still stops the muxer, which writes the index
+  for whatever samples got through. If the muxer is what broke, an M4A can be left without its
+  index (`moov`) and won't play without a repair tool. It's kept anyway, because it can still be
+  repaired and a deleted one can't.
+- **The app was killed, or the phone died.** Nothing gets to finish. A WAV still opens, thanks to
+  its "unknown size" header. An M4A doesn't, because its index is only ever written at the end.
+  Opus/Ogg is a streaming container and should play up to the cut, but that hasn't been tested.
+
+No report is shown for a take cut off by the process dying, since nothing is left running to make
+one. A capture failure with the screen off is also silent: the ongoing notification disappears, and
+the report waits until the app is next opened.
 
 ## The "effective device" under Automatic is a guess
 The pre-record sample-rate warning needs to know which device a recording will use. With an explicit
@@ -107,10 +150,92 @@ an *optional* platform feature. On a device that doesn't declare
 lowest-processing alternative, but still not guaranteed to be free of AGC or noise suppression. The
 settings summary states this outright. There is no API to verify what processing is actually applied.
 
+## Plain dialogs vanish when Android recreates the app
+The record dialog and the folder picker are `DialogFragment`s and survive the app being recreated:
+after its process is killed in the background, as happens to an app left with the phone asleep,
+or after a rotation. Their answer still arrives (design.md, *Dialogs answer with fragment
+results*). Before 0.13.2 they came back looking normal but did nothing when confirmed.
+
+The other dialogs are plain `AlertDialog`s and simply disappear instead. That covers the Input
+picker, the "Input not connected" prompt, the recent-names list and the rate/bitrate pickers inside
+the record dialog, and the Settings pickers. Nothing is silently lost, because the user just sees
+the screen without the dialog and opens it again. The mid-recording "Input disconnected" prompt is
+raised again by itself.
+
 ## Not yet implemented (possible future work)
 - In-app playback / list of past recordings.
 
 ## Verification status
+
+Builds 0.13.0 and 0.13.1 below were development builds. Their changes were released together as
+0.13.2.
+
+### Dialogs surviving recreation — Pixel 7 emulator (API 34), v0.13.2
+The report: the record dialog was left open, the phone went to sleep, and on return "Start
+recording" recorded nothing, and the name never reached the history. This was reproduced on v0.13.1
+by opening the dialog, typing "SleepTest", sending the app to the background and killing its
+process, which is what a phone does to a sleeping background app. Reopening the app brought the
+dialog back with the name in it. "Start recording" then closed it and nothing happened: the status
+stayed "Ready", no file was written, and the history stayed empty.
+
+On v0.13.2, the same steps with the rate also set to 16 kHz before the kill:
+
+| Check | Result |
+|---|---|
+| Restored dialog | Name "SleepTest" and rate 16 kHz both kept |
+| Start recording | Recording started; `SleepTest.m4a` saved, ffprobe reads 16 kHz AAC |
+| Name history | "SleepTest" remembered; typing "Sle" offers it |
+| Folder picker, killed inside a new folder | Reopened in that folder; "Use this folder" saved it |
+| Record dialog open during a rotation | Survived; Start recorded `SleepTest_2.m4a` |
+| Normal Record, and Settings → Save folder | Unchanged |
+
+### Failed-take handling — Pixel 7 emulator (API 34), v0.13.1
+Driven with a temporary, uncommitted test build that made the capture loop throw
+`AudioRecord.read error -6` on demand, the error a real read failure produces. Files were pulled
+and checked with ffprobe/ffmpeg and libsndfile.
+
+| Case | Result |
+|---|---|
+| M4A, fails mid-recording, app on screen | Stopped at once with "Recording ended with an error … saved as …"; 19.9 s of AAC kept, decodes cleanly |
+| WAV, same | 13.7 s kept; both header sizes exact; read by ffmpeg and libsndfile |
+| Opus, same | 5.2 s kept, decodes cleanly |
+| M4A, fails with the app in the background | The service stopped by itself and removed its notification; the report appeared on reopening; 3.2 s kept |
+| Fails on the very first buffer | "Recording failed", and no file left behind |
+| WAV, app force-stopped mid-take (no test hook) | Header still reads "unknown size"; ffmpeg and libsndfile read all 12.1 s |
+| Normal stop, M4A and WAV | Unchanged: "Saved: …", exact WAV header |
+
+Not covered: a real read error from real hardware.
+
+### Missing-input handling — Pixel 7 emulator (API 34), v0.13.0
+The emulator has no capture device that can be attached or detached: its audio policy declares only
+the built-in mic, and its virtual-headset switch events register nothing. So the before-recording
+path was driven with a remembered USB key that matches no device. The mid-recording path was
+driven with a temporary, uncommitted test build that could hide every input on demand and send a
+broadcast in place of the device callback. Verified:
+
+- **Before recording:**
+  - The Input row reads "USB Audio CODEC (USB) (not connected)" in red.
+  - Record opens "Input not connected", listing Automatic and Phone microphone.
+  - Cancel records nothing, and pressing Record again asks again.
+  - Choosing an input stores it and goes straight on to the pre-record dialog, whose rate note then
+    describes the newly chosen mic.
+  - Choosing Automatic clears the key and stops the prompting.
+  - Rotating with the prompt up leaks no window.
+- **Mid-recording:**
+  - Losing the input pauses at once: "Paused — input disconnected", the timer frozen, and the
+    notification reads "Paused: input disconnected".
+  - Restoring the input resumes by itself, with "Recording resumed — Phone microphone".
+  - "Stay paused" holds the pause.
+  - Resume while the input is still missing asks again rather than resuming.
+  - Choosing Automatic from the prompt resumes.
+  - A pause the *user* made survived an unplug and a replug untouched.
+  - A loss while the app was in the background paused the service, and reopening the app raised the
+    prompt.
+- **The file:** 237.5 s of valid WAV over about seven minutes of wall-clock time, so the paused
+  spans were excluded.
+- **Not covered:** a real USB mic being unplugged. Neither the real `AudioDeviceCallback` timing nor
+  the phone-mic window described in *An unplugged input can leave a moment of phone-mic audio* has
+  been observed.
 
 ### On real hardware — Galaxy S22 Ultra (SM-S908U, Android 16), v0.12.2
 Sample-rate work verified on-device, files pulled and headers parsed:

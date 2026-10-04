@@ -17,7 +17,8 @@ interface Recorder {
      * recording; the platform re-routes the running stream.
      *
      * This is a *hint* (`AudioRecord.setPreferredDevice`) — see [routedInputLabel] for what capture
-     * actually ended up on.
+     * actually ended up on. Null is only for "Automatic": a chosen device that has gone missing is
+     * handled by pausing ([RecordingService]), never by passing null here.
      */
     var preferredInput: AudioDeviceInfo?
 
@@ -33,6 +34,13 @@ interface Recorder {
     /** Total samples that clipped during this recording. */
     val clippedSamples: Long
 
+    /**
+     * Called on the capture thread when capture ends by itself because of an error, once whatever
+     * it had captured has been finalised. The owner should then call [stop], which reports the
+     * error.
+     */
+    var onCaptureFailed: (() -> Unit)?
+
     /** Begin capture. Throws on failure (caller should surface the error and clean up). */
     fun start()
 
@@ -42,10 +50,17 @@ interface Recorder {
     /** Resume capture after [pause]. No-op if not paused. */
     fun resume()
 
-    /** Stop capture and flush/finalise the output file. Safe to call once after start(). */
+    /**
+     * Stop capture and flush/finalise the output file. Safe to call once after start(). Throws if
+     * capture failed. Even then, the part recorded before the failure is left on disk, unless the
+     * failure came before anything was captured.
+     */
     fun stop()
 
-    /** Best-effort abort that also deletes any partial output. Used on error paths. */
+    /**
+     * Discards the take: stops capture and deletes the output. Used when a recording fails to
+     * start. A capture that fails partway is not discarded; [stop] keeps what it got.
+     */
     fun cancel()
 }
 

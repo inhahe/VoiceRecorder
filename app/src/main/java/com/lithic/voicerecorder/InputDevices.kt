@@ -16,7 +16,9 @@ import android.media.AudioManager
  * 2. persist the user's choice as a stable [InputOption.key] — **not** an [AudioDeviceInfo.getId],
  *    which is reassigned every time a device is unplugged and plugged back in,
  * 3. re-resolve that key to a live [AudioDeviceInfo] each time a recording starts (or the user
- *    changes the selection mid-recording).
+ *    changes the selection mid-recording),
+ * 4. when the chosen device isn't attached, **ask** — never set no preference and let Android
+ *    route to the phone's own mic in its place (see [Resolved] and [stepFor]).
  *
  * Everything except [options]/[resolve] is pure so it can be covered by JVM unit tests
  * (`InputDevicesTest`); the device labels live in code rather than `strings.xml` for the same reason
@@ -142,13 +144,45 @@ object InputDevices {
     /**
      * Find the option a stored [key] refers to. Falls back to *any* device of the same type, so a
      * USB interface that comes back with a slightly different product string (or a second headset)
-     * still satisfies "record from USB" rather than silently reverting to the phone mic.
+     * still satisfies "record from USB". It never crosses types: when nothing of the chosen type
+     * is attached the answer is null, and the phone's mic is not offered in its place.
      */
     fun match(options: List<InputOption>, key: String?): InputOption? {
         if (key.isNullOrEmpty()) return null
         options.firstOrNull { it.key == key }?.let { return it }
         val type = key.substringBefore(':').toIntOrNull() ?: return null
         return options.firstOrNull { it.type == type }
+    }
+
+    /**
+     * True when [key] names a specific input and nothing attached satisfies it. In that state
+     * nothing may record: setting no preference would let Android route to the phone's own mic, so
+     * the user is asked to pick an input instead. [AUTOMATIC] is never unavailable, because it
+     * *means* "whatever Android picks".
+     */
+    fun isUnavailable(options: List<InputOption>, key: String?): Boolean =
+        !key.isNullOrEmpty() && match(options, key) == null
+
+    /** What a recording does when its chosen input is checked again; see [stepFor]. */
+    enum class Step { KEEP, PAUSE, RESUME }
+
+    /**
+     * What a recording should do when the attached devices or the selection change. The service
+     * applies this after every such change; it's pure so the rules are JVM-tested.
+     *
+     * - Input gone while capturing → [Step.PAUSE]. Android re-routes a stream whose preferred
+     *   device has vanished to the phone's mic by itself, so carrying on would record from a mic
+     *   nobody chose. A gap in the file is better than that.
+     * - Input gone while already paused → [Step.KEEP]: nothing is being captured.
+     * - Input present, and this pause was made because it was missing ([pausedForInput]) →
+     *   [Step.RESUME]: the reason for the pause is gone.
+     * - Input present otherwise → [Step.KEEP]. A pause the user made is theirs to end; plugging a
+     *   mic back in never restarts it.
+     */
+    fun stepFor(available: Boolean, paused: Boolean, pausedForInput: Boolean): Step = when {
+        !available -> if (paused) Step.KEEP else Step.PAUSE
+        pausedForInput -> Step.RESUME
+        else -> Step.KEEP
     }
 
     /**
@@ -211,14 +245,29 @@ object InputDevices {
     fun options(context: Context): List<InputOption> = dedupe(scan(context).map { optionFor(it) })
 
     /**
-     * The live [AudioDeviceInfo] for a stored [key], or null for [AUTOMATIC] / a device that isn't
-     * attached — in which case the caller simply doesn't set a preference and Android picks.
+     * What a stored selection comes to, given the devices attached right now. There are three
+     * outcomes rather than a nullable device. "Set no preference" is right for [AUTOMATIC] and
+     * wrong for a chosen device that has gone missing, and folding both into `null` is how an
+     * unplugged USB mic used to turn into a recording from the phone's own mic.
      */
-    fun resolve(context: Context, key: String?): AudioDeviceInfo? {
-        if (key.isNullOrEmpty()) return null
+    sealed interface Resolved {
+        /** [AUTOMATIC]: set no preference, and Android routes by its own priority. */
+        data object Automatic : Resolved
+
+        /** The chosen input is attached. [info] is looked up fresh, since ids change on reconnect. */
+        class Device(val info: AudioDeviceInfo) : Resolved
+
+        /** The chosen input isn't attached. Ask the user; never treat this as [Automatic]. */
+        data object Unavailable : Resolved
+    }
+
+    /** Resolve a stored [key] against the capture devices attached right now. */
+    fun resolve(context: Context, key: String?): Resolved {
+        if (key.isNullOrEmpty()) return Resolved.Automatic
         val devices = scan(context)
-        val chosen = match(dedupe(devices.map { optionFor(it) }), key) ?: return null
-        return devices.firstOrNull { optionFor(it).key == chosen.key }
+        val chosen = match(dedupe(devices.map { optionFor(it) }), key) ?: return Resolved.Unavailable
+        val info = devices.firstOrNull { optionFor(it).key == chosen.key } ?: return Resolved.Unavailable
+        return Resolved.Device(info)
     }
 
     private fun scan(context: Context): List<AudioDeviceInfo> {
@@ -226,3 +275,10 @@ object InputDevices {
         return am.getDevices(AudioManager.GET_DEVICES_INPUTS).filter { it.type in CAPTURE_TYPES }
     }
 }
+
+/**
+ * A recording was asked to start while its chosen input is unplugged. The service throws this
+ * rather than start with no preference set, which would quietly record from the phone's own mic.
+ */
+class InputUnavailableException(key: String) :
+    IllegalStateException("${InputDevices.labelFromKey(key)} isn't connected")

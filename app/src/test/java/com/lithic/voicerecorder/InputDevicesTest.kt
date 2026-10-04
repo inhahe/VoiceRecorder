@@ -2,14 +2,17 @@ package com.lithic.voicerecorder
 
 import android.media.AudioDeviceInfo
 import com.lithic.voicerecorder.InputDevices.InputOption
+import com.lithic.voicerecorder.InputDevices.Step
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * JVM checks for the pure half of [InputDevices]: labelling, the stable key that survives a
- * reconnect, and the matching rules the persisted selection is resolved through.
+ * reconnect, the matching rules the persisted selection is resolved through, and what happens
+ * when the chosen input isn't there: the user is asked, and the phone's mic never stands in.
  *
  * `AudioDeviceInfo.TYPE_*` are compile-time `static final int` constants, so they inline and are
  * safe to use without the Android framework.
@@ -77,6 +80,56 @@ class InputDevicesTest {
     @Test fun `match returns null for automatic and for an absent type`() {
         assertNull(InputDevices.match(listOf(builtin()), InputDevices.AUTOMATIC))
         assertNull(InputDevices.match(listOf(builtin()), usb(7).key))
+    }
+
+    // --- a missing input asks; it doesn't fall back -------------------------------
+
+    @Test fun `automatic is never unavailable, even with nothing attached`() {
+        assertFalse(InputDevices.isUnavailable(emptyList(), InputDevices.AUTOMATIC))
+        assertFalse(InputDevices.isUnavailable(listOf(builtin()), InputDevices.AUTOMATIC))
+    }
+
+    @Test fun `an attached choice is available, including after a reconnect under a new id`() {
+        assertFalse(InputDevices.isUnavailable(listOf(builtin(), usb(7)), usb(7).key))
+        assertFalse(InputDevices.isUnavailable(listOf(builtin(), usb(41)), usb(7).key))
+    }
+
+    @Test fun `an unplugged choice is unavailable even though the phone mic is attached`() {
+        // The regression this guards: the phone's mic must never quietly stand in for a USB mic.
+        assertTrue(InputDevices.isUnavailable(listOf(builtin()), usb(7).key))
+        assertTrue(InputDevices.isUnavailable(emptyList(), usb(7).key))
+    }
+
+    @Test fun `another device of the same type still satisfies the choice`() {
+        val other = usb(9, "Scarlett Solo USB")
+        assertFalse(InputDevices.isUnavailable(listOf(builtin(), other), usb(7).key))
+    }
+
+    @Test fun `an unreadable stored key asks rather than guessing`() {
+        assertTrue(InputDevices.isUnavailable(listOf(builtin(), usb(7)), "garbage"))
+    }
+
+    // --- what a recording does when its input comes or goes -------------------
+
+    @Test fun `losing the input mid-recording pauses rather than carrying on`() {
+        assertEquals(Step.PAUSE, InputDevices.stepFor(available = false, paused = false, pausedForInput = false))
+    }
+
+    @Test fun `losing the input while already paused changes nothing`() {
+        assertEquals(Step.KEEP, InputDevices.stepFor(available = false, paused = true, pausedForInput = false))
+        assertEquals(Step.KEEP, InputDevices.stepFor(available = false, paused = true, pausedForInput = true))
+    }
+
+    @Test fun `a pause made for the missing input ends when it is back`() {
+        assertEquals(Step.RESUME, InputDevices.stepFor(available = true, paused = true, pausedForInput = true))
+    }
+
+    @Test fun `a pause the user made is never ended by a reconnect`() {
+        assertEquals(Step.KEEP, InputDevices.stepFor(available = true, paused = true, pausedForInput = false))
+    }
+
+    @Test fun `an input that is present while recording changes nothing`() {
+        assertEquals(Step.KEEP, InputDevices.stepFor(available = true, paused = false, pausedForInput = false))
     }
 
     @Test fun `summary describes automatic, a present device and an absent one`() {

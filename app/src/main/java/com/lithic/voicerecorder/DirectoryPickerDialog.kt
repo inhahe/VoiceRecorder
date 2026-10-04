@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import java.io.File
 
@@ -22,11 +23,12 @@ import java.io.File
  * Lets the user browse the real filesystem, drill into folders, go up to the parent, create a new
  * folder, and choose the current folder as the save location. Folders that can't be written to are
  * shown greyed-out with a lock icon and can't be chosen.
+ *
+ * The chosen folder goes back to the host as a fragment result under [REQUEST_KEY] (decode it
+ * with [pathOf]), not through a callback, so it still arrives after Android has recreated the
+ * dialog and its Activity. See [PreRecordDialog] for how a callback lost that.
  */
 class DirectoryPickerDialog : DialogFragment() {
-
-    /** Set by the host before showing. Called with the chosen absolute path. */
-    var onDirectoryChosen: ((String) -> Unit)? = null
 
     private lateinit var current: File
     private lateinit var pathText: TextView
@@ -34,7 +36,8 @@ class DirectoryPickerDialog : DialogFragment() {
     private lateinit var listContainer: LinearLayout
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        val startPath = arguments?.getString(ARG_START_PATH)
+        // Reopen where the user had browsed to if the dialog is being recreated.
+        val startPath = savedInstanceState?.getString(STATE_CURRENT) ?: arguments?.getString(ARG_START_PATH)
         current = resolveStart(startPath)
 
         val root = LayoutInflater.from(requireContext())
@@ -86,8 +89,13 @@ class DirectoryPickerDialog : DialogFragment() {
             Toast.makeText(requireContext(), R.string.folder_not_writable, Toast.LENGTH_SHORT).show()
             return
         }
-        onDirectoryChosen?.invoke(current.absolutePath)
+        parentFragmentManager.setFragmentResult(REQUEST_KEY, bundleOf(RESULT_PATH to current.absolutePath))
         dialog.dismiss()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (::current.isInitialized) outState.putString(STATE_CURRENT, current.absolutePath)
     }
 
     private fun promptNewFolder() {
@@ -189,6 +197,14 @@ class DirectoryPickerDialog : DialogFragment() {
     }
 
     companion object {
+        /** The fragment-result key the chosen folder arrives under. */
+        const val REQUEST_KEY = "directory_picker"
+
+        /** The chosen absolute path from a [REQUEST_KEY] result. */
+        fun pathOf(result: Bundle): String = result.getString(RESULT_PATH).orEmpty()
+
+        private const val RESULT_PATH = "path"
+        private const val STATE_CURRENT = "state_current"
         private const val ARG_START_PATH = "start_path"
 
         fun new(startPath: String?): DirectoryPickerDialog =

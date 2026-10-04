@@ -58,6 +58,8 @@ class PcmRecorder(
     @Volatile override var clippedSamples: Long = 0L
         private set
 
+    @Volatile override var onCaptureFailed: (() -> Unit)? = null
+
     @Volatile private var recording = false
     @Volatile private var paused = false
     private var worker: Thread? = null
@@ -113,6 +115,7 @@ class PcmRecorder(
 
         worker = thread(name = "pcm-capture") {
             val buffer = ByteArray(bufferSize)
+            var captured = 0L
             try {
                 while (recording) {
                     if (paused) {
@@ -129,16 +132,21 @@ class PcmRecorder(
                             lastClipElapsedMs = SystemClock.elapsedRealtime()
                         }
                         enc.encode(buffer, read)
+                        captured += read
                         analyzer?.push(buffer, read, spec.channels)
                     } else if (read < 0 && !paused) {
                         throw IllegalStateException("AudioRecord.read error $read")
                     }
                 }
-                enc.finish()
             } catch (t: Throwable) {
                 failure = t
-                try { enc.abort() } catch (_: Throwable) {}
             }
+            // Finalise what was captured, error or not. Only a take that failed before capturing
+            // anything is thrown away. (resume() can also have set `failure`, from the main thread.)
+            failure = endTake(enc, failure, captured)
+            // Tell the owner straight away, rather than leave the screen saying "Recording…" over a
+            // stream that has stopped.
+            if (failure != null) onCaptureFailed?.invoke()
         }
     }
 
@@ -180,7 +188,7 @@ class PcmRecorder(
         worker?.join()
         worker = null
         releaseAudioRecord()
-        // If the worker finished normally it already called finish(); make sure nothing is left.
+        // The worker has already finished the file on its way out; a cancel discards it anyway.
         try { encoder?.abort() } catch (_: Throwable) {}
         encoder = null
         analyzer?.reset()
