@@ -1,0 +1,19 @@
+A simple, no-frills voice recorder that records to WAV, M4A (AAC) or Opus, lets you pick the exact format, sample rate and bitrate for each recording, and saves into any folder you choose.
+
+Features:
+
+• Formats: WAV (lossless PCM), M4A (AAC) and Opus (Ogg).
+• Per-recording choices: change the format, sample rate and bitrate for one recording on top of your defaults.
+• Sample rates follow your hardware: the rates offered are probed on your device, so WAV reaches 88.2 or 96 kHz where the hardware allows.
+• Input selection: record from the phone's mic, a wired or Bluetooth headset, or a USB microphone or audio interface. The choice is remembered across reconnects, and the app shows which input is really in use.
+• No silent fallback: if your chosen input is missing when you press Record, or is unplugged during a recording, the app pauses and asks instead of quietly recording from the phone's mic.
+• Pause and resume during a recording.
+• Editable file names, chosen before recording starts, with a history of recent names for multiple takes. Takes never overwrite each other.
+• A built-in folder navigator: browse, create folders and choose where recordings go.
+• Storage readout: about how many hours of audio fit in the target folder at the current settings.
+• Mic gain from −20 to +24 dB, adjustable while recording.
+• Microphone processing: Android's voice chain (noise reduction and auto-gain) or raw capture for clean USB or line-level mics.
+• Sample-rate warnings, e.g. when a USB interface only records at 48 kHz.
+• A capture error doesn't cost the recording: everything recorded up to that point is saved, and WAV files cut off by a crash still open in common players and editors.
+
+No ads, no tracking, no network access.

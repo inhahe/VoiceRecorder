@@ -14,12 +14,21 @@ android {
         // Single source of truth for the version. Bump on every change (see CLAUDE.md):
         // versionName is the semver shown to users and used for the GitHub release tag,
         // versionCode must strictly increase or Android refuses the update.
-        versionCode = 18
-        versionName = "0.13.2"
+        versionCode = 19
+        versionName = "0.13.3"
+    }
+
+    // F-Droid: no Google-encrypted dependency list in the APK signing block (F-Droid's
+    // scanner rejects it, and it cannot be verified).
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     buildTypes {
         release {
+            // No VCS metadata file in the APK, so F-Droid's build of a tag can match ours.
+            vcsInfo.include = false
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

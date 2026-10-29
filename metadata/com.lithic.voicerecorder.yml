@@ -1,0 +1,40 @@
+# F-Droid build recipe for Voice Recorder.
+#
+# To submit: copy this file to `metadata/com.lithic.voicerecorder.yml` in a fork
+# of https://gitlab.com/fdroid/fdroiddata and open a merge request. It lives
+# here so it is reviewed alongside the code. The store listing itself (name,
+# descriptions, changelogs) is in fastlane/metadata/android/, which F-Droid
+# reads from this repository.
+#
+# The first Builds entry must name a tag that exists on GitHub and contains the
+# F-Droid build settings (dependenciesInfo / vcsInfo in app/build.gradle.kts),
+# i.e. v0.13.3 or later. After acceptance, F-Droid finds new versions by itself
+# from new v* tags (AutoUpdateMode / UpdateCheckMode below).
+
+Categories:
+  - Recorder
+  - Multimedia
+License: MIT
+AuthorName: Inhahe
+AuthorWebSite: https://inhahe.com
+SourceCode: https://github.com/inhahe/voicerecorder
+IssueTracker: https://github.com/inhahe/voicerecorder/issues
+Changelog: https://github.com/inhahe/voicerecorder/releases
+
+AutoName: Voice Recorder
+
+RepoType: git
+Repo: https://github.com/inhahe/voicerecorder.git
+
+Builds:
+  - versionName: 0.13.3
+    versionCode: 19
+    commit: v0.13.3
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.13.3
+CurrentVersionCode: 19

@@ -1,0 +1,1 @@
+Build changes for F-Droid; no change in how the app works.
