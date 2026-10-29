@@ -4,14 +4,14 @@ Categories:
 License: MIT
 AuthorName: Inhahe
 AuthorWebSite: https://inhahe.com
-SourceCode: https://github.com/inhahe/voicerecorder
-IssueTracker: https://github.com/inhahe/voicerecorder/issues
-Changelog: https://github.com/inhahe/voicerecorder/releases
+SourceCode: https://github.com/inhahe/VoiceRecorder
+IssueTracker: https://github.com/inhahe/VoiceRecorder/issues
+Changelog: https://github.com/inhahe/VoiceRecorder/releases
 
 AutoName: Voice Recorder
 
 RepoType: git
-Repo: https://github.com/inhahe/voicerecorder.git
+Repo: https://github.com/inhahe/VoiceRecorder.git
 
 Builds:
   - versionName: 0.13.3
