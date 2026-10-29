@@ -2,7 +2,7 @@ A simple, no-frills voice recorder that records to WAV, M4A (AAC) or Opus, lets 
 
 Features:
 
-• Formats: WAV (lossless PCM), M4A (AAC) and Opus (Ogg).
+• Formats: WAV (lossless PCM), M4A (AAC) and Opus (Ogg; Android 10 and later).
 • Per-recording choices: change the format, sample rate and bitrate for one recording on top of your defaults.
 • Sample rates follow your hardware: the rates offered are probed on your device, so WAV reaches 88.2 or 96 kHz where the hardware allows.
 • Input selection: record from the phone's mic, a wired or Bluetooth headset, or a USB microphone or audio interface. The choice is remembered across reconnects, and the app shows which input is really in use.

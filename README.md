@@ -32,9 +32,10 @@ built-in directory navigator.
   Repeated takes never overwrite — they get `_2`, `_3`, … suffixes. Turn the prefill off, or clear the
   remembered names, in **Settings → Reuse last file name / Remembered file names**.
 - **Permissions on first use:** the app asks for microphone and storage access up front. On
-  sideloaded builds the home screen shows a "Folder access needed" note with exact steps for
-  granting **All files access** (Android hides the switch behind App info → ⋮ → "Allow restricted
-  settings" until you unlock it); the note disappears once access is granted.
+  without **All files access** the home screen shows a "Folder access needed" note with exact
+  steps for granting it (including the extra step Android 13 and later add for apps installed from
+  a downloaded file: App info → ⋮ → "Allow restricted settings"); the note disappears once access
+  is granted.
 - **Storage capacity readout:** the main screen and the pre-record dialog show approximately how many
   hours of audio will fit in the target folder at the current settings.
 - **Input selection:** an **Input** row on the home screen lists every attached capture device —

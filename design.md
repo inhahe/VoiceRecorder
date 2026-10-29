@@ -332,3 +332,23 @@ there's no Android framework underneath.
 ## Known limitations
 
 See `known-issues.md` (WMA unsupported, Opus needs API 29+, storage-permission trade-offs).
+
+## Publishing
+
+Prepared for F-Droid, which builds the app itself from a `v*` tag:
+
+- `fastlane/metadata/android/en-US/` is the store listing F-Droid reads from this repository:
+  title, short and full description, `images/icon.png` (the launcher icon rendered at 512 px:
+  F-Droid cannot read an icon from the APK, whose icon is vector-only), and one
+  `changelogs/<versionCode>.txt` per version. Each version bump needs its changelog file.
+- `metadata/com.lithic.voicerecorder.yml` is the build recipe for F-Droid's fdroiddata
+  repository, kept exactly as `fdroid rewritemeta` writes it (fdroiddata's CI requires that, so
+  it has no comments). It is a draft until the app is accepted; then fdroiddata's copy is the
+  one F-Droid uses, and this one can go.
+- `app/build.gradle.kts` keeps the Google-encrypted dependency block out of the APK
+  (`dependenciesInfo`), which F-Droid's scanner rejects, and the VCS info file out of release
+  builds (`vcsInfo`). Both must stay.
+- F-Droid builds the unsigned release APK and signs it with its own key, so an F-Droid install
+  and a GitHub (debug-signed) install cannot update each other.
+- `publish-release.bat` tags the commit the APK was built from (`--target`), so the tag F-Droid
+  builds is the released code; GitHub refuses a commit that was not pushed.

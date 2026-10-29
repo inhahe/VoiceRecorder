@@ -68,7 +68,7 @@
 
     <!-- Sideloaded "All files access" note (home screen) -->
     <string name="permission_note_title">Folder access needed</string>
-    <string name="permission_note_body">To save recordings into any folder you pick, the app needs \"All files access\". Because it was sideloaded (installed outside the Play Store), Android greys out the switch until you unlock it. You only need to do this once:\n\n1. Tap \"App info\" below → tap the three-dot menu (⋮) in the top-right → \"Allow restricted settings\" (enter your PIN if asked).\n2. Tap \"Storage access\" below → turn on \"Allow access to manage all files\".</string>
+    <string name="permission_note_body">To save recordings into any folder you pick, the app needs \"All files access\". You only need to do this once:\n\nTap \"Storage access\" below → turn on \"Allow access to manage all files\".\n\nIf that switch is greyed out (Android 13 and later do this for apps installed from a downloaded file), first tap \"App info\" below → tap the three-dot menu (⋮) in the top-right → \"Allow restricted settings\" (enter your PIN if asked), then turn the switch on.</string>
     <string name="open_app_info">App info</string>
     <string name="open_storage_access">Storage access</string>
 
