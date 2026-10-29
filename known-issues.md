@@ -278,3 +278,12 @@ refresh path is exercised too.
   unit tests (`SpectrumAnalyzerTest`): silence stays flat, a tone lights a band, the peak band rises
   with frequency, and the FFT matches a naive DFT. (The emulator mic is digital silence, so the
   on-device meter shows flat bars — reactivity is validated by the unit tests, not the emulator.)
+
+## No license notices for bundled libraries
+
+The APK carries none of the license notices of the libraries it bundles (AndroidX, Kotlin
+and the rest are Apache-2.0, which asks for its NOTICE files to go along with binary copies),
+and the app has no licenses screen. Every published APK, GitHub's and F-Droid's once there, is
+such a copy. The fix: collect the Gradle dependencies' licenses with the AboutLibraries plugin
+(free software, no Google libraries) and show them on an "Open-source licenses" screen. Found
+by the code review of the F-Droid preparation, 2026-10-29.

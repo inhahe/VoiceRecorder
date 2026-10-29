@@ -341,6 +341,7 @@ Prepared for F-Droid, which builds the app itself from a `v*` tag:
   title, short and full description, `images/icon.png` (the launcher icon rendered at 512 px:
   F-Droid cannot read an icon from the APK, whose icon is vector-only), and one
   `changelogs/<versionCode>.txt` per version. Each version bump needs its changelog file.
+  When the launcher icon changes, re-render `icon.png`: `python "D:\visual studio projects\F-Droid tools\render_store_icon.py" .`
 - `metadata/com.lithic.voicerecorder.yml` is the build recipe for F-Droid's fdroiddata
   repository, kept exactly as `fdroid rewritemeta` writes it (fdroiddata's CI requires that, so
   it has no comments). It is a draft until the app is accepted; then fdroiddata's copy is the
