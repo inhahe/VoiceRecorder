@@ -162,6 +162,21 @@ the record dialog, and the Settings pickers. Nothing is silently lost, because t
 the screen without the dialog and opens it again. The mid-recording "Input disconnected" prompt is
 raised again by itself.
 
+## The status bar is white above the action bar
+
+Since targetSdk 35 the window is edge-to-edge, so the theme's `statusBarColor` no longer colours the
+status bar: on the API 36 emulator a white strip sits above the blue action bar on every screen,
+and the status bar's icons (clock, battery) are white on it, so they can't be seen in the app.
+The proper fix is to let the action bar's colour run up behind the status bar (pad the bar itself
+by the status bar's inset) and keep light icons over it; it must be checked on a device where the
+action bar overlays the content as well as on one where it doesn't (see `padBelowActionBar`),
+since colouring the window behind the strip only works for the second. Until 0.13.14 every screen also
+had a gap the height of the action bar under it, from padding for an overlap that this Android
+version doesn't make; `padBelowActionBar` now measures the overlap instead.
+
+On the home screen, **Change folder** (two lines of text beside its icon) stands taller than
+**Settings** beside it.
+
 ## Not yet implemented (possible future work)
 - In-app playback / list of past recordings.
 

@@ -1,0 +1,1 @@
+Screens no longer leave a gap the height of the title bar under it on recent Android versions: the space is now measured rather than assumed.
