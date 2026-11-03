@@ -91,8 +91,10 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
             val db = 20f * log10(peak + 1e-6f)
             val norm = ((db + DB_FLOOR) / DB_FLOOR).coerceIn(0f, 1f)
 
-            // Fast attack, slow decay for a lively-but-readable meter.
-            smoothed[b] = if (norm > smoothed[b]) norm else smoothed[b] * DECAY
+            // Fast attack, slow decay for a lively-but-readable meter. Never below the current
+            // reading: a steady tone that reads a hair lower than last frame (its phase moving
+            // against the FFT bins) must not drop the bar by a whole decay step.
+            smoothed[b] = max(norm, smoothed[b] * DECAY)
             out[b] = smoothed[b]
         }
         bands = out

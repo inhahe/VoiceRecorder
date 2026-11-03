@@ -1,0 +1,1 @@
+The frequency meter no longer flickers on a steady sound: a bar could drop by a whole step whenever a frame read slightly lower than the one before.

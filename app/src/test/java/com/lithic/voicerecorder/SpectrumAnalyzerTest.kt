@@ -85,4 +85,30 @@ class SpectrumAnalyzerTest {
             assertEquals("im[$k]", di, im[k].toDouble(), 1e-2)
         }
     }
+
+    /**
+     * A steady tone must read steadily. Fed in buffer-sized pieces, as the capture loop feeds it, a
+     * tone that falls between FFT bins reads a little higher or lower from one frame to the next as
+     * its phase moves. A frame that reads a hair lower must not drop the bar by a whole decay step.
+     */
+    @Test
+    fun steadyToneHoldsItsLevel() {
+        val analyzer = SpectrumAnalyzer()
+        val pcm = sinePcm(3000.0, sampleRate) // one second
+        val chunkBytes = 512 * 2
+        var band = -1
+        val readings = mutableListOf<Float>()
+        var offset = 0
+        while (offset + chunkBytes <= pcm.size) {
+            val part = pcm.copyOfRange(offset, offset + chunkBytes)
+            analyzer.push(part, part.size, channels = 1)
+            offset += chunkBytes
+            if (offset < 2048 * 2) continue // let the window fill and the bar reach the tone
+            if (band < 0) band = argmax(analyzer.bands)
+            readings.add(analyzer.bands[band])
+        }
+        val min = readings.minOrNull() ?: 0f
+        val max = readings.maxOrNull() ?: 0f
+        assertTrue("a steady tone's bar dipped from $max to $min", min > max * 0.95f)
+    }
 }
