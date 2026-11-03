@@ -112,6 +112,9 @@ class MainActivity : AppCompatActivity() {
         binding.settingsButton.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+        binding.recordingsButton.setOnClickListener {
+            startActivity(Intent(this, RecordingsActivity::class.java))
+        }
         binding.changeFolderButton.setOnClickListener { openDirectoryPicker() }
         binding.openAppInfoButton.setOnClickListener {
             startActivity(PermissionUtil.appDetailsIntent(this))
@@ -621,7 +624,11 @@ class MainActivity : AppCompatActivity() {
             } else {
                 getString(R.string.saved_as, file.name)
             }
-            Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+            Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG)
+                .setAction(R.string.play) {
+                    startActivity(Intent(this, RecordingsActivity::class.java).putExtra(RecordingsActivity.EXTRA_PLAY, file.path))
+                }
+                .show()
         }
     }
 

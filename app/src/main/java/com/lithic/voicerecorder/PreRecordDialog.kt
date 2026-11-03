@@ -361,7 +361,7 @@ class PreRecordDialog : DialogFragment() {
         private const val STATE_BITRATE = "state_bitrate_kbps"
 
         private const val ARG_SUGGESTED_NAME = "suggested_name"
-        private val ILLEGAL_FILENAME_CHARS = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
+        private val ILLEGAL_FILENAME_CHARS = RecordingFiles.ILLEGAL_FILENAME_CHARS
 
         fun new(suggestedName: String): PreRecordDialog =
             PreRecordDialog().apply {

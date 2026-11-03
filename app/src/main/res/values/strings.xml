@@ -140,4 +140,39 @@
     <string name="recent_names_empty">None yet</string>
     <string name="clear_recent_names">Clear list</string>
     <string name="recent_names_cleared">Remembered file names cleared</string>
+
+    <!-- Recordings screen and its player -->
+    <string name="recordings">Recordings</string>
+    <string name="recordings_title">Recordings</string>
+    <string name="play">Play</string>
+    <plurals name="recordings_summary">
+        <item quantity="one">%1$d recording · %2$s</item>
+        <item quantity="other">%1$d recordings · %2$s</item>
+    </plurals>
+    <string name="recordings_empty">No recordings in this folder yet.</string>
+    <string name="recordings_no_folder">The save folder doesn\'t exist yet. It is made when you record.</string>
+    <string name="recording_details">%1$s · %2$s · %3$s</string>
+    <string name="recording_in_progress">This recording is still being made.</string>
+    <string name="recording_in_progress_short">Recording…</string>
+    <string name="recording_actions">More for this recording</string>
+    <string name="recording_share">Share</string>
+    <string name="recording_share_title">Share %1$s</string>
+    <string name="recording_cant_share">Can\'t share this file: %1$s</string>
+    <string name="recording_rename">Rename</string>
+    <string name="recording_rename_title">Rename %1$s</string>
+    <string name="recording_rename_exists">There\'s already a file with that name</string>
+    <string name="recording_rename_failed">Couldn\'t rename the file</string>
+    <string name="recording_delete">Delete</string>
+    <string name="recording_delete_title">Delete %1$s?</string>
+    <string name="recording_delete_message">It is deleted for good: Android keeps no recycle bin for it.</string>
+    <string name="recording_delete_failed">Couldn\'t delete %1$s</string>
+    <string name="player_nothing_loaded">Tap a recording to play it</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_back_to_start">Back to the start</string>
+    <string name="player_position">Playback position</string>
+    <string name="player_playing">Playing</string>
+    <string name="player_paused">Paused in the player</string>
+    <string name="player_cant_open">Can\'t play %1$s: %2$s</string>
+    <string name="player_cant_play">Can\'t play %1$s: it is damaged, or in a format this phone doesn\'t play</string>
 </resources>

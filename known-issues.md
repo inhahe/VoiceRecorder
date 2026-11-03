@@ -158,7 +158,8 @@ results*). Before 0.13.2 they came back looking normal but did nothing when conf
 
 The other dialogs are plain `AlertDialog`s and simply disappear instead. That covers the Input
 picker, the "Input not connected" prompt, the recent-names list and the rate/bitrate pickers inside
-the record dialog, and the Settings pickers. Nothing is silently lost, because the user just sees
+the record dialog, the Settings pickers, and the recordings screen's Rename and Delete questions
+(a name half typed is lost; nothing is renamed or deleted). Nothing is silently lost, because the user just sees
 the screen without the dialog and opens it again. The mid-recording "Input disconnected" prompt is
 raised again by itself.
 
@@ -177,8 +178,19 @@ version doesn't make; `padBelowActionBar` now measures the overlap instead.
 On the home screen, **Change folder** (two lines of text beside its icon) stands taller than
 **Settings** beside it.
 
+## Deleting a recording is for good
+
+The recordings screen deletes with `File.delete()`, after asking. Android 11 and later have a trash
+(`MediaStore.createTrashRequest`), but only for files MediaStore knows by URI, and every request
+shows a system dialog of its own; the app reaches its files through "All files access" instead, in
+any folder. A recording deleted by mistake can't be got back from the app.
+
 ## Not yet implemented (possible future work)
-- In-app playback / list of past recordings.
+- Meters during playback. The desktop app shows the spectrum and level of what is playing; here
+  the player is on its own screen, away from the meter, and `MediaPlayer` doesn't hand over the
+  audio it plays (the `Visualizer` effect does, coarsely, and needs the microphone permission,
+  which the app has). Playing through `MediaCodec` and `AudioTrack` would give the samples.
+- Playing on in the background (a media session and a notification), for long recordings.
 
 ## Verification status
 

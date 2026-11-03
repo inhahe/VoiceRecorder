@@ -118,7 +118,10 @@ class RecordingService : Service() {
 
     /** Absolute path of the file currently being written, or null when idle. */
     var currentFile: File? = null
-        private set
+        private set(value) {
+            field = value
+            activeFile = value
+        }
 
     var isRecording: Boolean = false
         private set
@@ -415,6 +418,14 @@ class RecordingService : Service() {
     }
 
     companion object {
+        /**
+         * The file a take is writing now, or null: for the recordings screen, which mustn't play,
+         * rename or delete it, and doesn't bind to the service just to ask.
+         */
+        @Volatile
+        var activeFile: File? = null
+            private set
+
         private const val CHANNEL_ID = "recording"
         private const val NOTIFICATION_ID = 1001
 

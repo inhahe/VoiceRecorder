@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What Share may hand to another app: recordings in any folder the user saves to. Shared storage
+  is external-path; a folder on an SD card is outside it, under /storage, so root-path covers that.
+-->
+<paths>
+    <external-path name="shared" path="." />
+    <root-path name="storage" path="storage" />
+</paths>

@@ -13,6 +13,8 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
      │                        ├─> AudioDeviceCallback  (pauses if the chosen input goes)
      │                        └─> SpectrumAnalyzer ──> SpectrumView (via MainActivity poll)
      ├─ PreRecordDialog        (name + per-recording format overrides)
+     ├─ RecordingsActivity     (the save folder's recordings + the player)
+     │      └─> RecordingsModel ──> PlayerController ──> MediaPlayerOutput (AudioOutput)
      ├─ DirectoryPickerDialog  (save folder)
      └─ SettingsActivity       (defaults)
                     all persisted state ──> Settings (SharedPreferences)
@@ -353,6 +355,47 @@ audio could vanish over a read error in its last second.
 - **Cancel still discards.** `Recorder.cancel()` deletes by definition, and is only used when a
   recording fails to start.
 
+## Recordings and the player
+
+`RecordingsActivity` lists the save folder (`RecordingFiles.list`: audio extensions, newest
+first) and reads each recording's length, one at a time, on one background thread, so a slow card
+never holds up the screen; each listing is numbered and an older one finishing late is dropped.
+Lengths are cached by path, size and time. A WAV's comes from its header
+(`WavLayout`), which a take cut off by the app being killed still has, its sizes still the
+0xFFFFFFFF written at the start: read as "to the end of the file", in whole frames, which is what
+ffmpeg and libsndfile do with it. Anything else is asked of `MediaMetadataRetriever`, and a file it can't
+read shows "?". A `FileObserver` on the folder lists it again 300 ms after the last change, while
+the screen is started.
+
+- **The player outlives the screen's recreation.** `RecordingsModel`, an `AndroidViewModel`, holds
+  the `PlayerController`, its audio-focus request and the lengths, so turning the phone doesn't
+  stop a recording mid-play. The screen pauses it in `onStop` unless it is only being recreated
+  (`isChangingConfigurations`): playing on with the screen gone would leave no way to stop it.
+- **The rules are on the JVM.** `PlayerController` drives an `AudioOutput` (MediaPlayer on a
+  phone, a fake in `PlayerControllerTest`): play once open, pause and resume, the end showing the
+  full length with Play starting again from the beginning, an error kept with the file still named
+  so Play tries again, a seek kept within the recording. It makes an output per recording and
+  ignores callbacks from any it has let go of, so a slow open overtaken by another choice can't
+  start playing.
+- **Sound etiquette.** It asks for transient audio focus and pauses on any loss, ducking included:
+  a voice recording under a call or a navigation prompt is not music to play quietly beneath it.
+  Headphones unplugged (`ACTION_AUDIO_BECOMING_NOISY`) pause it before the speaker takes over.
+- **Renaming and deleting.** `MediaPlayer` is given the file's descriptor and keeps its own
+  duplicate, so a rename doesn't interrupt playing, and `PlayerController.renamed` follows it. A
+  delete first lets go of the file (`release`). Renames keep the extension, refuse a name that
+  exists (a change of case alone is a rename, on a card that ignores case too) and use the record
+  dialog's character rules (`RecordingFiles.ILLEGAL_FILENAME_CHARS`, shared with it).
+- **The take being recorded is left alone.** `RecordingService.activeFile` mirrors the service's
+  current file, so the screen, which doesn't bind to the service, shows it as "Recording…" and
+  won't play, measure, rename, share or delete it.
+- **A cut-off WAV plays through a corrected header.** Android's `MediaPlayer` refuses a WAV whose
+  sizes are unknown ("damaged", measured on the API 36 emulator), so `MediaPlayerOutput` gives it
+  one through a `MediaDataSource` over a `WavView`: the file as it reads had the take finished,
+  its two sizes filled in and its end cut to the last whole frame. The file itself isn't changed.
+  A WAV whose sizes are right is played by descriptor as before.
+- **Share** goes through a `FileProvider` (`res/xml/file_paths.xml`): shared storage is an
+  `external-path`, and a folder on an SD card, outside it under `/storage`, a `root-path`.
+
 ## Testing
 
 `app/src/test` holds JVM-only tests (no Android framework): `SpectrumAnalyzerTest` for the DSP,
@@ -362,7 +405,10 @@ rules (`isUnavailable`, and `stepFor`'s pause/resume table), `CaptureSourceTest`
 the audio-source mapping and its fallback, `AudioFormatSpecTest` for rate labelling, `snap()`, the
 per-format encoder mimes and the bytes/second estimate, and `PartialRecordingTest` for what a
 take that doesn't end cleanly leaves on disk (`endTake`, and the WAV header before and after
-`finish()`; `WavPcmEncoder` is plain `java.io`, so it runs there for real). Anything worth testing
+`finish()`; `WavPcmEncoder` is plain `java.io`, so it runs there for real), `RecordingFilesTest`
+for the recordings list, the rename rules and a WAV's length (finished, cut off, and claiming more
+than is there), and `PlayerControllerTest` for the player's rules over a fake output; `RecordingFilesTest` also
+reads a cut-off WAV through its `WavView` and compares it with the same audio finished. Anything worth testing
 should be factored into a pure function like these rather than tested through Android classes.
 
 `SampleRateSupport` itself is deliberately *not* tested: every branch is a native probe, so there

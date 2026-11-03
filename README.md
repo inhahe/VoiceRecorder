@@ -84,6 +84,18 @@ built-in directory navigator.
   says so. The setting persists between recordings.
 - **Live frequency analyzer:** while recording, a small real-time spectrum meter (FFT-based bars)
   is shown on the home screen for *every* format, and hidden again when you stop.
+- **Recordings and player:** **Recordings** on the home screen lists the recordings in the save
+  folder, newest first, with each one's length, size and date, and follows the folder while it is
+  open. Tap one to play it in the player at the bottom: tap it again, or the play button, to pause;
+  drag the bar to move through it; ⏮ goes back to the start. The one in the player is marked (a
+  speaker while it plays, a pause sign while paused). Its **⋮** menu shares it to another app,
+  renames it (the extension is kept, and nothing is ever overwritten) or deletes it, after asking,
+  since Android keeps no recycle bin for it. The "Saved" message after a recording has a **Play**
+  button that opens it there. Playing pauses when you leave the screen, when a call or another app
+  takes the sound, and when headphones are unplugged; turning the phone doesn't interrupt it. The
+  recording being made shows as "Recording…" and can't be played, renamed or deleted until it is
+  finished. A WAV cut off by the app being killed shows its real length and plays, though Android's
+  own player refuses it.
 - **Foreground service:** recording runs in a `microphone` foreground service with an ongoing
   notification, so it survives screen-off / backgrounding.
 
@@ -129,6 +141,11 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 |---|---|
 | `MainActivity.kt` | Home screen: record/stop, timer, storage readout, input picker + the "input not connected" prompt, permission + first-run flow, service binding. |
 | `SettingsActivity.kt` | Configure default format / sample rate / bitrate / channels / folder / filename pattern. |
+| `RecordingsActivity.kt` | The recordings screen: the save folder's recordings (listed and measured off the main thread, followed with a `FileObserver`), share / rename / delete, and the player bar. `RecordingsModel` (in the same file) keeps the player through a rotation. |
+| `PlayerController.kt` | The player's rules (open, play, pause, the end, errors, a recording renamed or deleted under it) over an `AudioOutput`, so they are tested on the JVM. |
+| `MediaPlayerOutput.kt` | The `AudioOutput` a phone uses: Android's `MediaPlayer`. |
+| `RecordingFiles.kt` | Which files are recordings, the rename rules, the length clock, a share's MIME type. |
+| `WavLayout.kt` | A WAV's layout and length from its header (a cut-off one included), and `WavView`, the corrected view a cut-off WAV is played through. |
 | `RecordingService.kt` | Foreground (`microphone`) service that owns the active recorder + the live [`SpectrumAnalyzer`], and pauses the recording if its chosen input is unplugged. |
 | `Recorder.kt` | `Recorder` interface + `RecorderFactory`. |
 | `PcmRecorder.kt` | The single capture engine: one `AudioRecord` reads PCM and tees it to the encoder + analyzer. |

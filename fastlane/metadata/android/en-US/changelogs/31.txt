@@ -1,0 +1,1 @@
+New Recordings screen: the recordings in your save folder with their length, size and date, and a player. Tap one to play or pause it, drag to move through it, and share, rename or delete it from its menu. "Saved" after a recording now has a Play button. Playing pauses for calls, when headphones are unplugged and when you leave the screen, and carries on when you turn the phone.
