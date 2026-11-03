@@ -44,15 +44,11 @@ class RecordingService : Service() {
 
     /**
      * Fills [out] with the recording meter's 0..1 frequency bands ([SpectrumAnalyzer.BANDS] of
-     * them); false, leaving it alone, when idle. Takes what rose since the previous call (see
-     * [SpectrumAnalyzer.takeBands]), so it is for the one screen that draws them: a second caller
-     * would take the first one's rises.
+     * them), leaving it alone when idle; returns whether there was new audio since the previous
+     * call. Takes what rose since then (see [SpectrumAnalyzer.takeBands]), so it is for the one
+     * screen that draws them: a second caller would take the first one's rises.
      */
-    fun takeSpectrum(out: FloatArray): Boolean {
-        if (!isRecording) return false
-        analyzer.takeBandsInto(out)
-        return true
-    }
+    fun takeSpectrum(out: FloatArray): Boolean = isRecording && analyzer.takeBandsInto(out)
 
     /**
      * Digital input gain in dB, applied to everything captured from here on. Setting it while a

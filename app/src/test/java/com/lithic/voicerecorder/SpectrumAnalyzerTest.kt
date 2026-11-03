@@ -241,6 +241,7 @@ class SpectrumAnalyzerTest {
         val hop = SpectrumAnalyzer.hopFor(sampleRate)
         fun push(pcm: ByteArray) = analyzer.push(pcm, pcm.size, channels = 1, sampleRate = sampleRate)
         push(sinePcm(3000.0, 4 * hop))                 // loud
+        val afterLoud = analyzer.analyses              // its rises come no later than this
         push(ByteArray(12 * hop * 2))                  // falls below what the quieter sound reads
         val beforeQuiet = analyzer.analyses            // the quieter rise comes after this one
         push(sinePcm(3000.0, 4 * hop, amp = 0.1))      // a quieter sound (-20 dB) lifts it again
@@ -249,7 +250,35 @@ class SpectrumAnalyzerTest {
         val latest = analyzer.takeBands().maxOrNull() ?: 0f // rises taken: just the latest now
         assertTrue("the read came within half a second of the quieter rise",
             analyzer.analyses - beforeQuiet <= SpectrumAnalyzer.RISE_HOLD)
+        assertTrue("the read came over half a second after the loud rise",
+            analyzer.analyses - SpectrumAnalyzer.RISE_HOLD >= afterLoud)
         assertTrue("the quieter sound's rise was lost: shown $shown, latest $latest", shown > latest + 0.1f)
+    }
+
+    /** Once a sound has gone, its bars fall all the way to 0 rather than shrinking for ever. */
+    @Test
+    fun barsSettleAtZeroAfterASound() {
+        val analyzer = SpectrumAnalyzer()
+        val tone = sinePcm(3000.0, sampleRate / 5)
+        analyzer.push(tone, tone.size, channels = 1, sampleRate = sampleRate)
+        val silence = ByteArray(sampleRate * 3 * 2)
+        analyzer.push(silence, silence.size, channels = 1, sampleRate = sampleRate)
+        val bands = analyzer.takeBands()
+        assertTrue("bars still above 0: ${bands.max()}", bands.all { it == 0f })
+    }
+
+    /** The reader is told whether audio came in since its last read, so it can stop looking so often. */
+    @Test
+    fun aReadSaysWhetherAudioCameIn() {
+        val analyzer = SpectrumAnalyzer()
+        val out = FloatArray(SpectrumAnalyzer.BANDS)
+        val hop = SpectrumAnalyzer.hopFor(sampleRate)
+        val pcm = sinePcm(3000.0, 3 * hop)
+        analyzer.push(pcm, pcm.size, channels = 1, sampleRate = sampleRate)
+        assertTrue(analyzer.takeBandsInto(out))
+        assertTrue("nothing new: ${out.max()}", !analyzer.takeBandsInto(out) && out.max() > 0.5f)
+        analyzer.push(pcm, hop * 2, channels = 1, sampleRate = sampleRate)
+        assertTrue(analyzer.takeBandsInto(out))
     }
 
     /**

@@ -15,8 +15,8 @@ import kotlin.math.sqrt
  * The capture thread feeds it through [push]. Every 1/[UPDATES_PER_SECOND] s of audio, the last
  * [WINDOW_SECONDS] are Hann-windowed and transformed, the magnitude spectrum is bucketed into
  * logarithmically spaced bands, and each band is mapped to 0..1 and peak-decayed. The display reads
- * the result with [takeBands], which may be called from any thread; everything else, [reset]
- * included, belongs to the thread that pushes.
+ * the result with [takeBandsInto] (or [takeBands]), which may be called from any thread; everything
+ * else, [reset] included, belongs to the thread that pushes.
  *
  * What the bars show depends neither on how `AudioRecord` cuts the audio into buffers (its size is
  * the device's choice) nor on the sample rate: analyses happen at fixed points in the audio, the
@@ -24,7 +24,9 @@ import kotlin.math.sqrt
  * rise since the previous read, so a click reaches its full height however many analyses one
  * buffer holds, while a falling bar is never held back.
  */
-class SpectrumAnalyzer(val bandCount: Int = BANDS) {
+class SpectrumAnalyzer {
+
+    private val bandCount = BANDS
 
     /** Everything that depends on the sample rate, built once per rate and replaced whole. */
     private class Geometry(val sampleRate: Int, bandCount: Int) {
@@ -145,6 +147,9 @@ class SpectrumAnalyzer(val bandCount: Int = BANDS) {
                 val before = smoothed[b]
                 val held = before * DECAY
                 smoothed[b] = if (readings[b].isNaN()) held else max(readings[b], held)
+                // A decayed peak shrinks by a factor and never reaches 0 by itself: the meter would
+                // never see its bars settle.
+                if (smoothed[b] < SETTLED) smoothed[b] = 0f
                 recentRises[b][slot] = if (smoothed[b] > before) smoothed[b] else 0f
             }
         }
@@ -161,10 +166,15 @@ class SpectrumAnalyzer(val bandCount: Int = BANDS) {
      */
     fun takeBands(): FloatArray = FloatArray(bandCount).also { takeBandsInto(it) }
 
-    /** [takeBands] into the first [bandCount] entries of [out], for a reader that polls every frame. */
-    fun takeBandsInto(out: FloatArray) {
+    /**
+     * [takeBands] into the first [BANDS] entries of [out], for a reader that polls every frame.
+     * Returns whether there was an analysis since the previous call: if not, the bars are as they
+     * were, and stay so until audio arrives.
+     */
+    fun takeBandsInto(out: FloatArray): Boolean {
         require(out.size >= bandCount) { "${out.size} entries for $bandCount bands" }
-        synchronized(lock) {
+        return synchronized(lock) {
+            val fresh = analyses != takenAt
             // The analyses since the previous call, as far as the last RISE_HOLD of them reach.
             val from = max(takenAt, analyses - RISE_HOLD) + 1
             for (b in 0 until bandCount) {
@@ -173,6 +183,7 @@ class SpectrumAnalyzer(val bandCount: Int = BANDS) {
                 out[b] = shown
             }
             takenAt = analyses
+            fresh
         }
     }
 
@@ -195,6 +206,9 @@ class SpectrumAnalyzer(val bandCount: Int = BANDS) {
     companion object {
         /** The bars the recording meter shows. */
         const val BANDS = 40
+
+        /** A smoothed band below this is drawn as nothing, and taken to be nothing. */
+        private const val SETTLED = 1e-3f
 
         /** Analyses per second of audio. */
         internal const val UPDATES_PER_SECOND = 50

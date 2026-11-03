@@ -4,20 +4,23 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.Choreographer
 import android.view.View
 import androidx.core.content.ContextCompat
+import kotlin.math.abs
 
 /**
  * A small live frequency-spectrum meter drawn as vertical bars, shown only while recording.
  *
- * While [active] and on screen it reads the band magnitudes from [source] on every frame, raises
- * the drawn bars to them at once and eases them down, so the meter falls smoothly between the
- * analyzer's updates. It redraws only when a bar moves: a paused or settled meter costs a read per
- * frame and no drawing.
+ * While [active] and visible it reads the band magnitudes from [source] on every frame, raises the
+ * drawn bars to them at once and eases them down, so the meter falls smoothly between the
+ * analyzer's updates. It redraws only when a bar has moved by half a pixel or more, and when no
+ * new audio arrives and the bars have settled (paused), or the meter is scrolled out of sight, it
+ * looks again ten times a second instead of on every frame.
  */
 class SpectrumView @JvmOverloads constructor(
     context: Context,
@@ -27,9 +30,11 @@ class SpectrumView @JvmOverloads constructor(
 
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
+    private val visibleRect = Rect()
 
     private val targets = FloatArray(SpectrumAnalyzer.BANDS)
     private val display = FloatArray(SpectrumAnalyzer.BANDS)
+    private val drawn = FloatArray(SpectrumAnalyzer.BANDS) // display as of the last draw
 
     private var active = false
     private var shown = false
@@ -43,9 +48,10 @@ class SpectrumView @JvmOverloads constructor(
 
     /**
      * Fills the array it is given with the 0..1 band magnitudes, lowest frequency first, and says
-     * whether it did (false while there is nothing to read). Called on every frame while [active]:
-     * as often as the screen can show a change, rather than on a timer of its own that would gather
-     * the analyses between two ticks into one step.
+     * whether any new audio was analysed since the previous call (false while paused or idle).
+     * Called on every frame while audio is coming in: as often as the screen can show a change,
+     * rather than on a timer of its own that would gather the analyses between two ticks into one
+     * step.
      */
     var source: ((FloatArray) -> Boolean)? = null
 
@@ -68,7 +74,14 @@ class SpectrumView @JvmOverloads constructor(
     override fun onVisibilityAggregated(isVisible: Boolean) {
         super.onVisibilityAggregated(isVisible)
         shown = isVisible
-        if (shown) scheduleFrame() else cancelFrame()
+        if (shown) {
+            scheduleFrame()
+        } else {
+            cancelFrame()
+            // Back on screen, it shows the sound then, not bars from when it was hidden.
+            targets.fill(0f)
+            display.fill(0f)
+        }
     }
 
     override fun onDetachedFromWindow() {
@@ -76,10 +89,11 @@ class SpectrumView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
-    private fun scheduleFrame() {
+    /** Asks for [onFrame] at the next frame, or [delayMillis] later when nothing is changing. */
+    private fun scheduleFrame(delayMillis: Long = 0) {
         if (frameScheduled || !active || !shown || !isAttachedToWindow) return
         frameScheduled = true
-        Choreographer.getInstance().postFrameCallback(frame)
+        Choreographer.getInstance().postFrameCallbackDelayed(frame, delayMillis)
     }
 
     private fun cancelFrame() {
@@ -94,9 +108,18 @@ class SpectrumView @JvmOverloads constructor(
         val seconds = if (lastFrameNanos == 0L) 0f
         else ((frameTimeNanos - lastFrameNanos) / 1e9f).coerceIn(0f, MAX_STEP_SECONDS)
         lastFrameNanos = frameTimeNanos
-        source?.invoke(targets)
-        if (BarMotion.step(display, targets, seconds)) invalidate()
-        scheduleFrame()
+        val fresh = source?.invoke(targets) == true
+        val moving = BarMotion.step(display, targets, seconds)
+        val onScreen = getLocalVisibleRect(visibleRect) // false when scrolled out of sight
+        if (onScreen && changedByHalfAPixel()) invalidate()
+        scheduleFrame(if (onScreen && (fresh || moving)) 0 else IDLE_POLL_MILLIS)
+    }
+
+    /** Whether any bar has moved by half a pixel or more since it was last drawn. */
+    private fun changedByHalfAPixel(): Boolean {
+        val range = height * (1f - MIN_BAR)
+        for (i in display.indices) if (abs(display[i] - drawn[i]) * range >= 0.5f) return true
+        return false
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -112,7 +135,8 @@ class SpectrumView @JvmOverloads constructor(
         val gap = w / n * 0.25f
         val barWidth = w / n - gap
         val radius = barWidth * 0.4f
-        val minBar = h * 0.02f
+        val minBar = h * MIN_BAR
+        display.copyInto(drawn)
         for (i in 0 until n) {
             val barH = minBar + display[i] * (h - minBar)
             val left = i * (barWidth + gap) + gap / 2f
@@ -124,5 +148,11 @@ class SpectrumView @JvmOverloads constructor(
     companion object {
         /** The longest step one frame may take, so a stall doesn't drop the bars in one jump. */
         private const val MAX_STEP_SECONDS = 0.1f
+
+        /** How often to look for audio again once nothing is changing: paused, settled or out of sight. */
+        private const val IDLE_POLL_MILLIS = 100L
+
+        /** The height of a silent bar, as a fraction of the view's. */
+        private const val MIN_BAR = 0.02f
     }
 }

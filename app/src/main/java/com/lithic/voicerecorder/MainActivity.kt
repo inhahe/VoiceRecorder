@@ -38,6 +38,9 @@ class MainActivity : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var tickCount = 0
+
+    /** The whole seconds the timer shows, so the 50 ms tick only formats and sets a new value. */
+    private var shownSeconds = -1L
     private val timerTick = object : Runnable {
         override fun run() {
             updateTimer()
@@ -99,7 +102,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         binding.root.padBelowActionBar()
         // Read on every frame while recording; the service is whichever is bound at the time.
-        binding.spectrumView.source = { out -> service?.takeSpectrum(out) ?: false }
+        binding.spectrumView.source = { out -> service?.takeSpectrum(out) == true }
         settings = Settings(this)
         inputValueColors = binding.inputValue.textColors
 
@@ -686,19 +689,17 @@ class MainActivity : AppCompatActivity() {
     private fun updateTimer() {
         val ms = service?.elapsedMillis() ?: 0L
         val totalSec = ms / 1000
+        if (totalSec == shownSeconds) return // polled every 50 ms; it changes once a second
+        shownSeconds = totalSec
         val h = totalSec / 3600
         val m = (totalSec % 3600) / 60
         val s = totalSec % 60
-        binding.timerText.setTextIfChanged(
+        binding.timerText.text =
             if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
             else String.format(Locale.US, "%02d:%02d", m, s)
-        )
     }
 
-    /**
-     * For text polled on every tick: a TextView lays itself out and redraws whenever its text is
-     * set, changed or not, so setting the timer every 50 ms redrew the screen 20 times a second.
-     */
+    /** For text polled on a tick: a TextView lays itself out and redraws on every set, changed or not. */
     private fun TextView.setTextIfChanged(value: CharSequence) {
         if (!TextUtils.equals(text, value)) text = value
     }

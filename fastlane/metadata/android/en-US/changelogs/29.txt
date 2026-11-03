@@ -1,0 +1,1 @@
+Less battery while recording: the frequency meter redraws only when a bar visibly moves, its bars settle all the way down after a sound, and while paused, scrolled out of sight or in the background it checks for sound ten times a second instead of on every frame. Coming back to the app shows the sound now rather than bars from when you left.

@@ -257,10 +257,11 @@ not lost audio. During a take the spectrum is read on every frame and reacts (th
 quiet, so only a band or two rose). Not yet tried on a phone with long buffers, where the
 smoother meter would show.
 
-Frames the app rendered in 3 s (`dumpsys gfxinfo`, 0.13.12, emulator with the host microphone on):
-idle 0 (before, the timer's text set every 50 ms forced about 60); recording with the bars
-moving 180–182, a redraw per vsync; paused 0; recording with the app in the background 0, and
-180+ again once it is back in front.
+Frames the app rendered in 3 s (`dumpsys gfxinfo`, emulator): idle 0 (before 0.13.12, the
+timer's text set every 50 ms forced about 60). 0.13.13: recording silence (host microphone off) 3,
+the timer's once a second; recording with the host microphone on, whose room noise keeps the
+bars moving, 178–180, a redraw per vsync; paused 0; in the background 0, and 180 again once back
+in front.
 
 ### On real hardware — Galaxy S22 Ultra (SM-S908U, Android 16), v0.12.2
 Sample-rate work verified on-device, files pulled and headers parsed:

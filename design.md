@@ -30,7 +30,7 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
   the codec falls behind.
 - **The analyzer belongs to the capture thread,** which pushes to it and also clears it when it
   sees a pause (`CaptureLoop`, the loop apart from `AudioRecord`, so that is tested on the JVM);
-  only `takeBands` is called elsewhere. Cleared from the main thread, a buffer the capture thread
+  only `takeBandsInto` is called elsewhere. Cleared from the main thread, a buffer the capture thread
   was still reading would light the meter again for the whole pause.
 - **What the bars show doesn't depend on the phone or the rate.** `AudioRecord` picks the buffer
   size per device, and the rate is the user's. So the analyzer runs `UPDATES_PER_SECOND` times per
@@ -46,14 +46,19 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
   one survives the higher one ageing out), so the screen coming back on doesn't flash a sound long
   past. The view raises a bar at once and eases it down (`BarMotion`, timed rather than per frame,
   so it falls as fast on a 120 Hz screen as on a 60 Hz one), so a click is drawn at its full height
-  rather than eased towards it. It reads from a `Choreographer` frame callback, which runs only
-  while the meter is active and visible (`onVisibilityAggregated`: not in the background), and
-  redraws only when a bar moved, so a paused or settled meter draws nothing; the reads go into the
-  view's own array (`takeBandsInto`), not a new one each frame. The 50 ms UI tick likewise sets the
-  timer's text only when it changes: a `TextView` relays itself out on every set, which redrew the
-  screen 20 times a second for a timer that changes once. After a reset the window starts as silence and the analyses run on
-  the usual grid from the first hop, so the first moments after Record or Resume count as much as
-  any. The rate comes with every `push`, and a new one starts the meter afresh.
+  rather than eased towards it.
+- **The meter costs nothing when nothing changes.** It reads from a `Choreographer` frame callback
+  that runs only while it is active and visible (`onVisibilityAggregated`: not in the background),
+  into its own array (`takeBandsInto`, no array per frame). It redraws only when a bar has moved by
+  half a pixel, and the analyzer floors a decayed band to 0, since a peak that shrinks by a factor
+  never gets there. When no new audio came in (`takeBandsInto` says so) and the bars have settled,
+  as when paused, or the meter is scrolled out of sight, it looks again ten times a second rather
+  than on every frame. Hidden, it forgets its bars, so coming back shows the sound now. The 50 ms
+  UI tick likewise formats and sets the timer only when its second changes: a `TextView` relays
+  itself out on every set, changed or not.
+- **After a reset the window starts as silence** and the analyses run on the usual grid from the
+  first hop, so the first moments after Record or Resume count as much as any. The rate comes with
+  every `push`, and a new one starts the meter afresh.
 - **Service owns the recording, Activity owns the UI.** The Activity can die/rebind; recording state
   lives in the foreground service and the UI re-derives itself in `refreshUi()`.
 - **Settings is the only persistence.** No database; everything is SharedPreferences-backed
