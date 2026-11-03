@@ -164,17 +164,15 @@ played). Nothing is silently lost, because the user just sees
 the screen without the dialog and opens it again. The mid-recording "Input disconnected" prompt is
 raised again by itself.
 
-## The status bar is white above the action bar
+## The status bar's colour is checked on one kind of device only
 
 Since targetSdk 35 the window is edge-to-edge, so the theme's `statusBarColor` no longer colours the
-status bar: on the API 36 emulator a white strip sits above the blue action bar on every screen,
-and the status bar's icons (clock, battery) are white on it, so they can't be seen in the app.
-The proper fix is to let the action bar's colour run up behind the status bar (pad the bar itself
-by the status bar's inset) and keep light icons over it; it must be checked on a device where the
-action bar overlays the content as well as on one where it doesn't (see `padBelowActionBar`),
-since colouring the window behind the strip only works for the second. Until 0.13.14 every screen also
-had a gap the height of the action bar under it, from padding for an overlap that this Android
-version doesn't make; `padBelowActionBar` now measures the overlap instead.
+status bar. Until 0.14.3 that left a white strip above the blue action bar, with the status bar's
+white icons unreadable on it. `colourStatusBar` now paints the strip from the window's own
+background, under everything, with light icons; the content's root has no background of its own,
+so the strip should show through it where the action bar overlays the content too. That case
+hasn't been seen (the API 36 emulator lays the content out below the action bar), so it is the
+one to look at on a phone.
 
 On the home screen, **Change folder** (two lines of text beside its icon) stands taller than
 **Settings** beside it.

@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         binding.root.padBelowActionBar()
+        colourStatusBar()
         // Read on every frame while recording; the service is whichever is bound at the time.
         binding.spectrumView.source = { out -> service?.takeSpectrum(out) == true }
         settings = Settings(this)

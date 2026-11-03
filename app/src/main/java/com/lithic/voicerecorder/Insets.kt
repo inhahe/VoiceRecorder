@@ -1,9 +1,60 @@
 package com.lithic.voicerecorder
 
+import android.app.Activity
+import android.graphics.Canvas
+import android.graphics.ColorFilter
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.util.TypedValue
 import android.view.View
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+
+/**
+ * Colours the strip behind the status bar with the theme's dark primary, and keeps the bar's
+ * icons light on it. Edge-to-edge (targetSdk 35) ignores the theme's `statusBarColor`, which
+ * leaves the strip the window's background, white, with the white icons unreadable on it.
+ *
+ * The strip is drawn by the window's own background, under everything: where the content starts
+ * below the action bar nothing covers it, and where the content is laid out from the top of the
+ * window, its root has no background of its own, so the strip shows through it either way. Its
+ * height is the status bar's, read at each draw, so turning the phone keeps it right.
+ */
+fun Activity.colourStatusBar() {
+    val decor = window.decorView
+    val color = ContextCompat.getColor(this, R.color.primary_dark)
+    val base = decor.background ?: TypedValue().let { tv ->
+        if (theme.resolveAttribute(android.R.attr.colorBackground, tv, true)) ColorDrawable(tv.data) else null
+    }
+    decor.background = StatusStrip(decor, base, color)
+    WindowCompat.getInsetsController(window, decor).isAppearanceLightStatusBars = false
+}
+
+/** The window's background with the status bar's strip painted over its top. */
+private class StatusStrip(private val view: View, private val base: Drawable?, color: Int) : Drawable() {
+    private val paint = Paint().apply { this.color = color }
+
+    override fun draw(canvas: Canvas) {
+        base?.let {
+            it.bounds = bounds
+            it.draw(canvas)
+        }
+        val top = ViewCompat.getRootWindowInsets(view)?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0
+        if (top > 0) canvas.drawRect(bounds.left.toFloat(), bounds.top.toFloat(), bounds.right.toFloat(), (bounds.top + top).toFloat(), paint)
+    }
+
+    override fun setAlpha(alpha: Int) {}
+
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = PixelFormat.OPAQUE
+}
 
 /**
  * Keeps [this] view's content clear of the action bar and the system bars, by padding it as far

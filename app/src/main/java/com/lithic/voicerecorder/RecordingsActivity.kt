@@ -95,6 +95,7 @@ class RecordingsActivity : AppCompatActivity() {
         binding = ActivityRecordingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
         binding.root.padBelowActionBar()
+        colourStatusBar()
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         title = getString(R.string.recordings)
         settings = Settings(this)
