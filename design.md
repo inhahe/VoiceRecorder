@@ -20,6 +20,12 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
 
 - **One capture engine.** `PcmRecorder` owns the single `AudioRecord` and tees PCM to both the
   encoder and the analyzer, so the spectrum works for every format (no `MediaRecorder` path).
+- **The analyzer belongs to the capture thread,** which pushes to it and also clears it when it
+  sees a pause; only `bands` is read elsewhere. Cleared from the main thread, a buffer the capture
+  thread was still reading lit the meter again for the whole pause. It analyses
+  `UPDATES_PER_SECOND` times per second of audio, inside a buffer when the buffer is longer, rather
+  than once per buffer: `AudioRecord` picks the buffer size per device, and decaying once per buffer
+  made the bars fall at a different speed on every phone.
 - **Service owns the recording, Activity owns the UI.** The Activity can die/rebind; recording state
   lives in the foreground service and the UI re-derives itself in `refreshUi()`.
 - **Settings is the only persistence.** No database; everything is SharedPreferences-backed

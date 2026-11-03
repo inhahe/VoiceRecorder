@@ -109,7 +109,8 @@ class PcmRecorder(
         }
         encoder = enc
 
-        analyzer?.reset()
+        // Before the capture thread exists, so this is the only thread touching the analyzer.
+        analyzer?.reset(spec.sampleRate)
         recording = true
         ar.startRecording()
 
@@ -117,12 +118,21 @@ class PcmRecorder(
             val buffer = ByteArray(bufferSize)
             var captured = 0L
             try {
+                var meterCleared = false
                 while (recording) {
                     if (paused) {
+                        // Cleared here, on the thread that feeds the analyzer, once the pause is
+                        // seen. Cleared by pause() on the main thread instead, a buffer this thread
+                        // was still reading would light the meter again for the whole pause.
+                        if (!meterCleared) {
+                            analyzer?.reset()
+                            meterCleared = true
+                        }
                         // AudioRecord is stopped while paused; wait without spinning the CPU.
                         Thread.sleep(20)
                         continue
                     }
+                    meterCleared = false
                     val read = ar.read(buffer, 0, buffer.size)
                     if (read > 0) {
                         // Gain first, so the file, the meter and the clip warning all agree.
@@ -153,9 +163,9 @@ class PcmRecorder(
     override fun pause() {
         if (!recording || paused) return
         paused = true
-        // Stop the mic stream so its buffer doesn't fill up while we're not draining it.
+        // Stop the mic stream so its buffer doesn't fill up while we're not draining it. The capture
+        // thread clears the meter once it sees the pause.
         try { audioRecord?.stop() } catch (_: Exception) {}
-        analyzer?.reset()
     }
 
     @SuppressLint("MissingPermission") // RECORD_AUDIO was validated in start().

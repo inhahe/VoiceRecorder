@@ -276,8 +276,11 @@ refresh path is exercised too.
   M4A (`ftyp`/`moov`/`mdat`/`mp4a`/`esds`), Opus (`OggS`/`OpusHead`), WAV (patched RIFF/WAVE).
 - The live frequency analyzer renders while recording and hides on stop. Its DSP is covered by JVM
   unit tests (`SpectrumAnalyzerTest`): silence stays flat, a tone lights a band, the peak band rises
-  with frequency, and the FFT matches a naive DFT. (The emulator mic is digital silence, so the
-  on-device meter shows flat bars — reactivity is validated by the unit tests, not the emulator.)
+  with frequency, the FFT matches a naive DFT, a steady tone's bar holds steady (0.13.4), and the
+  bars fall at the same speed whatever the buffer size and sample rate (0.13.5). (The emulator mic
+  is digital silence, so the on-device meter shows flat bars — reactivity is validated by the unit
+  tests, not the emulator.) The meter clearing on pause (0.13.5) is not covered: it lives in
+  `PcmRecorder`'s capture loop, which needs a real `AudioRecord`.
 
 ## No license notices for bundled libraries
 

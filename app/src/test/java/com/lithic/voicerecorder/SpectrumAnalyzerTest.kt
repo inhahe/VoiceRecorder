@@ -86,29 +86,80 @@ class SpectrumAnalyzerTest {
         }
     }
 
+    /** Pushes [pcm] in pieces of [chunkFrames] frames, calling [after] after each piece. */
+    private fun pushInChunks(analyzer: SpectrumAnalyzer, pcm: ByteArray, chunkFrames: Int, after: () -> Unit = {}) {
+        val chunkBytes = chunkFrames * 2
+        var offset = 0
+        while (offset < pcm.size) {
+            val part = pcm.copyOfRange(offset, minOf(offset + chunkBytes, pcm.size))
+            analyzer.push(part, part.size, channels = 1)
+            offset += part.size
+            after()
+        }
+    }
+
     /**
-     * A steady tone must read steadily. Fed in buffer-sized pieces, as the capture loop feeds it, a
-     * tone that falls between FFT bins reads a little higher or lower from one frame to the next as
-     * its phase moves. A frame that reads a hair lower must not drop the bar by a whole decay step.
+     * A steady tone must read steadily. Analysed every hop, a tone that falls between FFT bins reads
+     * a little higher or lower from one analysis to the next as its phase moves. One that reads a
+     * hair lower must not drop the bar by a whole decay step. The pieces here are smaller than the
+     * hop, so successive readings come from successive analyses.
      */
     @Test
     fun steadyToneHoldsItsLevel() {
-        val analyzer = SpectrumAnalyzer()
-        val pcm = sinePcm(3000.0, sampleRate) // one second
-        val chunkBytes = 512 * 2
+        val analyzer = SpectrumAnalyzer().apply { reset(sampleRate) }
         var band = -1
+        var analyses = 0
+        var last = analyzer.bands
         val readings = mutableListOf<Float>()
-        var offset = 0
-        while (offset + chunkBytes <= pcm.size) {
-            val part = pcm.copyOfRange(offset, offset + chunkBytes)
-            analyzer.push(part, part.size, channels = 1)
-            offset += chunkBytes
-            if (offset < 2048 * 2) continue // let the window fill and the bar reach the tone
+        pushInChunks(analyzer, sinePcm(3000.0, sampleRate), chunkFrames = 512) {
+            if (analyzer.bands !== last) analyses++
+            last = analyzer.bands
+            // Skip the first few analyses, while the bar is still climbing to the tone.
+            if (analyses < 3) return@pushInChunks
             if (band < 0) band = argmax(analyzer.bands)
             readings.add(analyzer.bands[band])
         }
         val min = readings.minOrNull() ?: 0f
         val max = readings.maxOrNull() ?: 0f
+        assertTrue("no readings: the analyzer never ran", readings.size > 10 && max > 0.5f)
         assertTrue("a steady tone's bar dipped from $max to $min", min > max * 0.95f)
+    }
+
+    /**
+     * How fast the bars fall doesn't depend on how the audio is cut up. `AudioRecord` hands the
+     * capture loop buffers of a size it picks per device, and one analysis per buffer made the meter
+     * sluggish on one phone and twitchy on another.
+     */
+    @Test
+    fun barsFallAtTheSameSpeedWhateverTheBufferSize() {
+        fun afterSilence(chunkFrames: Int): Float {
+            val analyzer = SpectrumAnalyzer().apply { reset(sampleRate) }
+            pushInChunks(analyzer, sinePcm(3000.0, sampleRate / 2), chunkFrames)
+            pushInChunks(analyzer, ByteArray(sampleRate / 2 * 2), chunkFrames) // half a second of silence
+            return analyzer.bands.maxOrNull() ?: 0f
+        }
+        val reference = afterSilence(256)
+        assertTrue("the bar should be falling, not gone or still full: $reference", reference in 0.05f..0.7f)
+        for (chunk in listOf(7, 1024, 3584, 7168)) {
+            assertEquals("bars after silence with $chunk-frame buffers", reference.toDouble(), afterSilence(chunk).toDouble(), 1e-3)
+        }
+    }
+
+    /** Nor does the sample rate: the analyses come at a fixed rate per second of audio. */
+    @Test
+    fun analysesComeAtAFixedRatePerSecondOfAudio() {
+        for (rate in listOf(8000, 16000, 44100, 48000)) {
+            val analyzer = SpectrumAnalyzer().apply { reset(rate) }
+            var updates = 0
+            var last = analyzer.bands
+            // Two seconds, one frame at a time, so every analysis is seen.
+            pushInChunks(analyzer, ByteArray(rate * 2 * 2), chunkFrames = 1) {
+                if (analyzer.bands !== last) updates++
+                last = analyzer.bands
+            }
+            // Less the time the window takes to fill.
+            val expected = (2.0 - SpectrumAnalyzer.FFT_SIZE.toDouble() / rate) * SpectrumAnalyzer.UPDATES_PER_SECOND
+            assertEquals("$rate Hz", expected, updates.toDouble(), 2.0)
+        }
     }
 }
