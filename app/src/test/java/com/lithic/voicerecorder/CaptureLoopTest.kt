@@ -54,6 +54,18 @@ class CaptureLoopTest {
         assertEquals(4L, loop.captured)
     }
 
+    /** A read that returns nothing is neither audio nor an error: the loop just reads again. */
+    @Test
+    fun aReadOfNothingIsSkipped() {
+        val mic = Mic()
+        val loop = loop(mic,
+            read = { n -> if (n == 2) mic.recording = false; if (n == 1) 0 else 6 },
+            idle = {})
+        loop.run()
+        assertEquals(listOf("read", "read", "deliver 6"), mic.events)
+        assertEquals(6L, loop.captured)
+    }
+
     /** A read error ends the loop, unless it is the microphone being stopped for a pause. */
     @Test
     fun aReadErrorIsAFailureUnlessPaused() {

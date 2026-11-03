@@ -33,8 +33,11 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
   but no lower than the highest each band rose to since the previous poll. A rise is what a poll
   between bursts of analyses would miss (a long buffer's analyses all land at once, a click among
   the first has decayed by the last); a fall it can't miss, so a falling bar shows where it is now
-  rather than at the burst's oldest analysis. A rise unread for half a second is dropped, so the
-  screen coming back on doesn't flash a sound long past. After a reset the window starts as
+  rather than at the burst's oldest analysis. Only rises of the last half second count (a
+  sliding-window maximum per band, so a lower rise behind a higher one survives the higher one
+  ageing out), so the screen coming back on doesn't flash a sound long past. `SpectrumView` then
+  raises a bar at once and eases it down, so a click that lasts one poll is drawn at its full
+  height rather than eased towards it. After a reset the window starts as
   silence and the analyses run on the usual grid from the first hop, so the first moments after
   Record or Resume count as much as any. The rate comes with every `push`, and a new one starts
   the meter afresh.

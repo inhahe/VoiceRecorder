@@ -14,9 +14,9 @@ import androidx.core.content.ContextCompat
 /**
  * A small live frequency-spectrum meter drawn as vertical bars, shown only while recording.
  *
- * The recorder pushes fresh band magnitudes via [submitBands]; the view eases the drawn bars toward
- * those targets and keeps re-invalidating itself while [active], so the meter stays smooth even
- * between the (coarser) magnitude updates.
+ * The recorder pushes fresh band magnitudes via [submitBands]; the view raises the drawn bars to
+ * those targets at once and eases them down, re-invalidating itself while [active], so the meter
+ * falls smoothly between the (coarser) magnitude updates.
  */
 class SpectrumView @JvmOverloads constructor(
     context: Context,
@@ -83,10 +83,11 @@ class SpectrumView @JvmOverloads constructor(
 
         var animating = false
         for (i in 0 until n) {
-            // Ease drawn value toward the target; snap when close.
+            // Up at once, eased down, as meters do: easing a rise too would draw a click that lasts
+            // one poll at a fraction of its height. Snap when close.
             val t = targets[i]
             val d = display[i]
-            val next = d + (t - d) * EASE
+            val next = if (t > d) t else d + (t - d) * EASE
             display[i] = if (kotlin.math.abs(t - next) < 0.001f) t else next
             if (kotlin.math.abs(t - display[i]) > 0.001f) animating = true
 

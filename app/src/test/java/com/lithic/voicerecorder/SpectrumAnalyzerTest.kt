@@ -232,6 +232,26 @@ class SpectrumAnalyzerTest {
     }
 
     /**
+     * A lower rise that came after a higher one still shows if the higher one has aged out by the
+     * time of the read: what counts is the highest rise of the last half second.
+     */
+    @Test
+    fun aLaterLowerRiseOutlivesAnOlderHigherOne() {
+        val analyzer = SpectrumAnalyzer()
+        val hop = sampleRate / SpectrumAnalyzer.UPDATES_PER_SECOND
+        fun push(pcm: ByteArray) = analyzer.push(pcm, pcm.size, channels = 1, sampleRate = sampleRate)
+        push(sinePcm(3000.0, 4 * hop))                 // loud
+        push(ByteArray(12 * hop * 2))                  // falls below what the quieter sound reads
+        push(sinePcm(3000.0, 4 * hop, amp = 0.1))      // a quieter sound (-20 dB) lifts it again
+        val afterQuiet = analyzer.analyses
+        push(ByteArray(14 * hop * 2))                  // nobody reads: the loud rise ages out first
+        val shown = analyzer.takeBands().maxOrNull() ?: 0f
+        val latest = analyzer.takeBands().maxOrNull() ?: 0f // rises taken: just the latest now
+        assertTrue("the read came within half a second of the quieter rise", analyzer.analyses - afterQuiet < 25)
+        assertTrue("the quieter sound's rise was lost: shown $shown, latest $latest", shown > latest + 0.1f)
+    }
+
+    /**
      * Sound just after a reset (recording started or resumed) counts as much as sound later:
      * the window starts as silence, so the first analyses come on the usual grid instead of
      * waiting for a full window that would see the start only near its edge.
@@ -296,10 +316,10 @@ class SpectrumAnalyzerTest {
             val window = SpectrumAnalyzer.windowLengthFor(rate)
             val hop = rate / SpectrumAnalyzer.UPDATES_PER_SECOND
             assertTrue("$rate Hz: a $window-frame window for a $hop-frame hop", window >= 2 * hop)
-            val fft = SpectrumAnalyzer.fftSizeFor(rate)
-            assertTrue("$rate Hz: FFT of $fft for a $window-frame window", fft >= window && fft and (fft - 1) == 0)
-            // And the analyzer accepts the rate (it checks the same itself).
-            SpectrumAnalyzer().push(ByteArray(2), 2, channels = 1, sampleRate = rate)
+            // And the analyzer takes the rate (it checks the same itself) and analyses at it.
+            val analyzer = SpectrumAnalyzer()
+            analyzer.push(ByteArray(hop * 2), hop * 2, channels = 1, sampleRate = rate)
+            assertEquals("$rate Hz", 1L, analyzer.analyses)
         }
     }
 }

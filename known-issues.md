@@ -280,9 +280,9 @@ refresh path is exercised too.
   the same speed whatever the buffer size, analyses come at the same rate per second and the bars
   let go as quickly at every sample rate, the windows overlap at every rate offered, a short sound
   shows at full height and a falling bar at its latest analysis whatever the buffer size, the bars
-  hold between analyses, a rise nobody read is dropped once old, and sound right after a reset
-  counts like sound later (0.13.7). The meter clearing on pause is
-  covered by `CaptureLoopTest`. (The emulator mic is digital silence, so the on-device meter shows
+  hold between analyses, a rise nobody read is dropped once old (but a later, lower one outlives
+  it), and sound right after a reset counts like sound later (0.13.8). The meter clearing on pause
+  is covered by `CaptureLoopTest`. (The emulator mic is digital silence, so the on-device meter shows
   flat bars — reactivity is validated by the unit tests, not the emulator.)
 
 ## No license notices for bundled libraries

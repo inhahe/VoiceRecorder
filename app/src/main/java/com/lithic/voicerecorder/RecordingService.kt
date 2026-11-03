@@ -39,7 +39,7 @@ class RecordingService : Service() {
     private var segmentStartElapsed = 0L
     private var accumulatedMillis = 0L
 
-    /** Live spectrum source, fed by the capture loop; the UI polls [spectrum] while recording. */
+    /** Live spectrum source, fed by the capture loop; the UI polls [takeSpectrum] while recording. */
     private val analyzer = SpectrumAnalyzer()
 
     /**

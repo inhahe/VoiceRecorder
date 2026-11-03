@@ -52,27 +52,68 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
         val im = FloatArray(fftSize)
     }
 
+    /**
+     * One band's rises since the last read, kept only while each could still be the highest of the
+     * last [RISE_HOLD] analyses: oldest first, values falling. A sliding-window maximum, so a lower
+     * rise behind a higher one isn't lost when the higher one ages out before the read.
+     */
+    private class Rises {
+        private val value = FloatArray(RISE_HOLD + 1)
+        private val at = LongArray(RISE_HOLD + 1)
+        private var first = 0
+        private var count = 0
+
+        /** The band rose to [v] in analysis [analysis]. */
+        fun add(v: Float, analysis: Long) {
+            expire(analysis)
+            while (count > 0 && value[slot(count - 1)] <= v) count--
+            // Room: what is left is younger than RISE_HOLD analyses, one rise per analysis at most.
+            val s = slot(count)
+            value[s] = v
+            at[s] = analysis
+            count++
+        }
+
+        /** The highest rise of the last [RISE_HOLD] analyses as of analysis [now], or 0; then none are left. */
+        fun take(now: Long): Float {
+            expire(now)
+            val highest = if (count > 0) value[first] else 0f
+            count = 0
+            return highest
+        }
+
+        fun clear() {
+            count = 0
+        }
+
+        private fun expire(now: Long) {
+            while (count > 0 && now - at[first] >= RISE_HOLD) {
+                first = (first + 1) % value.size
+                count--
+            }
+        }
+
+        private fun slot(k: Int) = (first + k) % value.size
+    }
+
     private var geometry: Geometry? = null
     private var ringPos = 0
     private var sinceLastFft = 0
-    private val smoothed = FloatArray(bandCount)
-    private val rose = BooleanArray(bandCount)
 
-    /** Analyses run since the last [reset]; for the tests, which can't see them otherwise. */
-    internal var analyses = 0L
-        private set
+    /** The latest analysis's readings, before smoothing; the analysing thread's own. */
+    private val readings = FloatArray(bandCount)
 
     private val lock = Any()
 
-    /** The bands after the latest analysis. Guarded by [lock]. */
-    private val latest = FloatArray(bandCount)
+    /** The bars as of the latest analysis. Guarded by [lock]. */
+    private val smoothed = FloatArray(bandCount)
 
-    /** The highest each band rose to since the last [takeBands], and in which analysis. Guarded by [lock]. */
-    private val risePeak = FloatArray(bandCount)
-    private val riseAt = LongArray(bandCount)
+    /** Each band's rises since the last [takeBands]. Guarded by [lock]. */
+    private val rises = Array(bandCount) { Rises() }
 
-    /** [analyses] as of the latest analysis, for [takeBands]. Guarded by [lock]. */
-    private var published = 0L
+    /** Analyses run since the last [reset]. Guarded by [lock] (the tests read it on the one thread). */
+    internal var analyses = 0L
+        private set
 
     /**
      * Feed one interleaved 16-bit little-endian PCM buffer: [len] valid bytes of [channels]
@@ -105,8 +146,11 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
     }
 
     private fun analyse(g: Geometry) {
-        // The window, oldest sample first, then zeros up to the FFT size.
-        for (k in 0 until g.windowLength) g.re[k] = g.ring[(ringPos + k) % g.windowLength] * g.window[k]
+        // The window, oldest sample first (from ringPos to the end of the ring, then from its
+        // start), then zeros up to the FFT size.
+        val older = g.windowLength - ringPos
+        for (k in 0 until older) g.re[k] = g.ring[ringPos + k] * g.window[k]
+        for (k in older until g.windowLength) g.re[k] = g.ring[k - older] * g.window[k]
         g.re.fill(0f, g.windowLength, g.fftSize)
         g.im.fill(0f)
         Fft.transform(g.re, g.im, g.fftSize)
@@ -124,28 +168,21 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
             }
             // Magnitude → dB, mapped from [-DB_FLOOR, 0] dB to [0, 1].
             val db = 20f * log10(sqrt(peakPower) / scale + 1e-6f)
-            val norm = ((db + DB_FLOOR) / DB_FLOOR).coerceIn(0f, 1f)
-
-            // Fast attack, slow decay for a lively-but-readable meter. Never below the current
-            // reading: a steady tone that reads a hair lower than last time must not drop the bar
-            // by a whole decay step. A NaN reading (impossible from 16-bit input, but cheap to rule
-            // out) is skipped, not adopted.
-            val before = smoothed[b]
-            val held = before * DECAY
-            smoothed[b] = if (norm.isNaN()) held else max(norm, held)
-            rose[b] = smoothed[b] > before
+            readings[b] = ((db + DB_FLOOR) / DB_FLOOR).coerceIn(0f, 1f)
         }
-        analyses++
+        // A few dozen multiplications: cheap enough to hold the reader off for.
         synchronized(lock) {
+            analyses++
             for (b in 0 until bandCount) {
-                latest[b] = smoothed[b]
-                // A higher rise replaces the one held, and so does any rise once that one is stale.
-                if (rose[b] && (smoothed[b] >= risePeak[b] || analyses - riseAt[b] >= RISE_HOLD)) {
-                    risePeak[b] = smoothed[b]
-                    riseAt[b] = analyses
-                }
+                // Fast attack, slow decay for a lively-but-readable meter. Never below the current
+                // reading: a steady tone that reads a hair lower than last time must not drop the
+                // bar by a whole decay step. A NaN reading (impossible from 16-bit input, but cheap
+                // to rule out) is skipped, not adopted.
+                val before = smoothed[b]
+                val held = before * DECAY
+                smoothed[b] = if (readings[b].isNaN()) held else max(readings[b], held)
+                if (smoothed[b] > before) rises[b].add(smoothed[b], analyses)
             }
-            published = analyses
         }
     }
 
@@ -153,16 +190,13 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
      * The bars to draw, 0..1, lowest frequency first: the latest analysis, but no lower than the
      * highest each band rose to since the previous call. A rise is what a reader polling between
      * bursts of analyses would miss (a click in a long buffer has decayed by the time it can read);
-     * a fall it can't miss, so a falling bar shows where it is now. A rise older than [RISE_HOLD]
-     * analyses is dropped: nobody was reading then (the screen was off), and showing it now would
-     * flash a sound long past. Meant for one reader, which would otherwise take the other's rises.
+     * a fall it can't miss, so a falling bar shows where it is now. Only rises of the last
+     * [RISE_HOLD] analyses count: one older was made while nobody was reading (the screen was off),
+     * and showing it now would flash a sound long past. Meant for one reader, which would
+     * otherwise take the other's rises.
      */
     fun takeBands(): FloatArray = synchronized(lock) {
-        FloatArray(bandCount) { b ->
-            val rise = if (published - riseAt[b] < RISE_HOLD) risePeak[b] else 0f
-            risePeak[b] = 0f
-            max(latest[b], rise)
-        }
+        FloatArray(bandCount) { b -> max(smoothed[b], rises[b].take(analyses)) }
     }
 
     /** Clear the meter. Call it from the thread that pushes, or once that thread has stopped. */
@@ -173,13 +207,10 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
         geometry?.ring?.fill(0f)
         ringPos = 0
         sinceLastFft = 0
-        analyses = 0
-        smoothed.fill(0f)
         synchronized(lock) {
-            latest.fill(0f)
-            risePeak.fill(0f)
-            riseAt.fill(0L)
-            published = 0L
+            analyses = 0
+            smoothed.fill(0f)
+            for (r in rises) r.clear()
         }
     }
 
@@ -198,8 +229,6 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
         private const val RISE_HOLD = UPDATES_PER_SECOND / 2
 
         internal fun windowLengthFor(rate: Int): Int = (rate * WINDOW_SECONDS).roundToInt()
-
-        internal fun fftSizeFor(rate: Int): Int = nextPowerOfTwo(windowLengthFor(rate))
 
         private fun nextPowerOfTwo(n: Int): Int {
             var p = 1
