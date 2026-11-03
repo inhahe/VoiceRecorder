@@ -1,0 +1,1 @@
+The frequency meter shows short sounds at their full height on every phone, no longer misses sounds at 88.2 and 96 kHz, and lets go as quickly at low sample rates as at high ones.

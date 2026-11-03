@@ -131,6 +131,7 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 | `RecordingService.kt` | Foreground (`microphone`) service that owns the active recorder + the live [`SpectrumAnalyzer`], and pauses the recording if its chosen input is unplugged. |
 | `Recorder.kt` | `Recorder` interface + `RecorderFactory`. |
 | `PcmRecorder.kt` | The single capture engine: one `AudioRecord` reads PCM and tees it to the encoder + analyzer. |
+| `CaptureLoop.kt` | The capture thread's loop (read, deliver, clear the meter when a pause is seen), apart from `AudioRecord` so it is tested on the JVM. |
 | `PcmEncoder.kt` | `PcmEncoder` sinks — `WavPcmEncoder` (RIFF/WAVE) and `MediaCodecPcmEncoder` (AAC-in-MP4, Opus-in-Ogg) — plus `endTake`, which finalises whatever a take captured, even after an error. |
 | `Gain.kt` | Software input gain: dB↔linear, in-place scaling of 16-bit PCM, clip counting. |
 | `InputDevices.kt` | Capture-device enumeration, labelling, the reconnect-stable key the chosen input is persisted as, the missing-input rules (ask, never fall back; when to pause and resume), and the device-vs-requested sample-rate advice. |

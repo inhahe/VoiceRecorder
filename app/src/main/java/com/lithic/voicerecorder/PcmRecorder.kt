@@ -110,50 +110,36 @@ class PcmRecorder(
         encoder = enc
 
         // Before the capture thread exists, so this is the only thread touching the analyzer.
-        analyzer?.reset(spec.sampleRate)
+        analyzer?.reset()
         recording = true
         ar.startRecording()
 
-        worker = thread(name = "pcm-capture") {
-            val buffer = ByteArray(bufferSize)
-            var captured = 0L
-            try {
-                var meterCleared = false
-                while (recording) {
-                    if (paused) {
-                        // Cleared here, on the thread that feeds the analyzer, once the pause is
-                        // seen. Cleared by pause() on the main thread instead, a buffer this thread
-                        // was still reading would light the meter again for the whole pause.
-                        if (!meterCleared) {
-                            analyzer?.reset()
-                            meterCleared = true
-                        }
-                        // AudioRecord is stopped while paused; wait without spinning the CPU.
-                        Thread.sleep(20)
-                        continue
-                    }
-                    meterCleared = false
-                    val read = ar.read(buffer, 0, buffer.size)
-                    if (read > 0) {
-                        // Gain first, so the file, the meter and the clip warning all agree.
-                        val clipped = Gain.apply(buffer, read, gainLinear)
-                        if (clipped > 0) {
-                            clippedSamples += clipped
-                            lastClipElapsedMs = SystemClock.elapsedRealtime()
-                        }
-                        enc.encode(buffer, read)
-                        captured += read
-                        analyzer?.push(buffer, read, spec.channels)
-                    } else if (read < 0 && !paused) {
-                        throw IllegalStateException("AudioRecord.read error $read")
-                    }
+        val loop = CaptureLoop(
+            buffer = ByteArray(bufferSize),
+            read = { ar.read(it, 0, it.size) },
+            deliver = { buffer, read ->
+                // Gain first, so the file, the meter and the clip warning all agree.
+                val clipped = Gain.apply(buffer, read, gainLinear)
+                if (clipped > 0) {
+                    clippedSamples += clipped
+                    lastClipElapsedMs = SystemClock.elapsedRealtime()
                 }
+                enc.encode(buffer, read)
+                analyzer?.push(buffer, read, spec.channels, spec.sampleRate)
+            },
+            clearMeter = { analyzer?.reset() },
+            isRecording = { recording },
+            isPaused = { paused },
+        )
+        worker = thread(name = "pcm-capture") {
+            try {
+                loop.run()
             } catch (t: Throwable) {
                 failure = t
             }
             // Finalise what was captured, error or not. Only a take that failed before capturing
             // anything is thrown away. (resume() can also have set `failure`, from the main thread.)
-            failure = endTake(enc, failure, captured)
+            failure = endTake(enc, failure, loop.captured)
             // Tell the owner straight away, rather than leave the screen saying "Recording…" over a
             // stream that has stopped.
             if (failure != null) onCaptureFailed?.invoke()

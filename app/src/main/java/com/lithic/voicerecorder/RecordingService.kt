@@ -42,8 +42,11 @@ class RecordingService : Service() {
     /** Live spectrum source, fed by the capture loop; the UI polls [spectrum] while recording. */
     private val analyzer = SpectrumAnalyzer()
 
-    /** Latest 0..1 frequency-band magnitudes for the recording meter (empty when idle). */
-    fun spectrum(): FloatArray = if (isRecording) analyzer.bands else EMPTY_SPECTRUM
+    /**
+     * The recording meter's 0..1 frequency bands: the peak of each since the previous call (see
+     * [SpectrumAnalyzer.takeBands]), or empty when idle. For the one screen that draws them.
+     */
+    fun spectrum(): FloatArray = if (isRecording) analyzer.takeBands() else EMPTY_SPECTRUM
 
     /**
      * Digital input gain in dB, applied to everything captured from here on. Setting it while a

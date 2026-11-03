@@ -21,11 +21,17 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
 - **One capture engine.** `PcmRecorder` owns the single `AudioRecord` and tees PCM to both the
   encoder and the analyzer, so the spectrum works for every format (no `MediaRecorder` path).
 - **The analyzer belongs to the capture thread,** which pushes to it and also clears it when it
-  sees a pause; only `bands` is read elsewhere. Cleared from the main thread, a buffer the capture
-  thread was still reading lit the meter again for the whole pause. It analyses
-  `UPDATES_PER_SECOND` times per second of audio, inside a buffer when the buffer is longer, rather
-  than once per buffer: `AudioRecord` picks the buffer size per device, and decaying once per buffer
-  made the bars fall at a different speed on every phone.
+  sees a pause (`CaptureLoop`, the loop apart from `AudioRecord`, so that is tested on the JVM);
+  only `takeBands` is called elsewhere. Cleared from the main thread, a buffer the capture thread
+  was still reading would light the meter again for the whole pause.
+- **What the bars show doesn't depend on the phone or the rate.** `AudioRecord` picks the buffer
+  size per device, and the rate is the user's. So the analyzer runs `UPDATES_PER_SECOND` times per
+  second of audio, at fixed points in it (inside a buffer when the buffer is longer); each analysis
+  looks at a fixed length of time (`WINDOW_SECONDS`, 2048 frames at 48 kHz, zero-padded to a power
+  of two for the FFT), at least two hops long, so consecutive Hann windows overlap by half and no
+  sound slips between them; and the screen's 50 ms poll takes the peak of each band since its last
+  read, so a short sound shows at its full height however many analyses one buffer or one poll
+  spans. The rate comes with every `push`, and a new one starts the meter afresh.
 - **Service owns the recording, Activity owns the UI.** The Activity can die/rebind; recording state
   lives in the foreground service and the UI re-derives itself in `refreshUi()`.
 - **Settings is the only persistence.** No database; everything is SharedPreferences-backed
