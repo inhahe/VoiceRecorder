@@ -394,9 +394,12 @@ the screen is started.
   request share one set of `AudioAttributes` (`ExoOutput.ATTRIBUTES`), since the system
   decides from them how to treat the sound.
 - **Renaming and deleting.** The player opens the file once and reads it only through that open
-  file (`ExoOutput.OpenFileDataSource`), however often it opens its source again (each seek does),
-  so a rename doesn't interrupt playing, nor a seek after one, and `PlayerController.renamed`
-  follows it. A delete first lets
+  file (`ExoOutput.OpenFileDataSource` over an `OpenFile`), however often it opens its source again
+  (each seek does), so a rename doesn't interrupt playing, nor a seek after one, and
+  `PlayerController.renamed` follows it. `OpenFile` reads through a `RandomAccessFile` under a lock,
+  not a `FileChannel`: Media3 interrupts its loading thread to cancel a load, and an interrupt
+  closes a channel for good (`OpenFileTest`). A delete lets go of the file only once it has gone
+  to the trash: one that couldn't be moved plays on. A delete first lets
   go of the file (`release`). Renames keep the extension, refuse a name that
   another file has (`Files.isSameFile`: on storage that ignores case, the new case of this file's
   own name is the same file) or that starts with a dot (the file would be hidden, and leave the
@@ -434,29 +437,36 @@ the screen is started.
   wrapped (`ExoOutput.MeterSink`, a `ForwardingAudioSink`): each decoded buffer, the first time it
   is handed over, is converted to 16-bit (`Pcm16`, any PCM encoding; one it doesn't read is
   skipped rather than shown as noise) and queued (`PlaybackMeterQueue`) by its presentation time;
-  and the time the output has reached is noted each time the player asks the sink, about every
-  10 ms while playing. The two are the sink's own timebase (Media3 adds an offset to media times,
-  which both carry), and that position allows for the output's latency, so the bars move with
-  what is heard. The queue is read on the main thread, as the player bar's `SpectrumView` asks,
-  and analysed by the app's own `SpectrumAnalyzer`. A pause holds the bars (the time stands
-  still); a seek or a new format flushes the sink, which clears the queue and the position. Times
-  are in µs, so a change of rate partway through a file changes nothing. Blocks played more than
-  a quarter of a second before a read (the screen was away) are dropped and the analyzer starts
-  afresh. Paused, the controller reports nothing new, so the bars settle.
+  and the time the output has reached is handed to the queue each time the player asks the sink,
+  about every 10 ms while playing. The two are the sink's own timebase (Media3 adds an offset to
+  media times, which both carry), and that position allows for the output's latency, so the bars
+  move with what is heard. The queue is read on the main thread, as the player bar's
+  `SpectrumView` asks, and analysed by the app's own `SpectrumAnalyzer`, up to the time heard and
+  no further, partway through a block if need be: for PCM the player hands the sink batches of
+  seconds at once. The time, the blocks and a flush share one lock, so a seek can't fall between
+  reading the time and using it. A pause holds the bars (the time stands still); a seek or a new
+  format flushes the sink, which clears the queue and the time. Times are in µs, so a change of
+  rate partway through a file changes nothing. Sound heard more than a quarter of a second before
+  a read (the screen was away) is skipped and the analyzer starts afresh; at most 30 s is queued.
+  Paused, the controller reports nothing new, so the bars settle.
 - **A cut-off WAV plays as it is.** Media3's WAV extractor reads a data size of 0xFFFFFFFF, or one
   larger than the file, as running to the end of the file (measured on the API 36 emulator: "Data
   exceeds input length"), in whole frames, as `WavLayout` measures it for the list.
 - **Recently deleted.** Delete moves the recording into a hidden `.voicerecorder-trash` folder
-  inside its own (`RecordingFiles.trash`), named `<time deleted, 13 digits of ms>-<name>`: a rename
-  on the same volume, nothing copied, and hidden, so neither this list nor media apps show it. The
-  folder is named for the app, and only files named as it names them, with an audio extension,
-  count as its own (`trashed`), so a `.trash` of another app's, or anything else put there, is
-  never listed, restored or deleted. A Snackbar offers Undo, which restores what `trash` returned,
-  so nothing is asked first. The screen's menu lists what is there (most recent first, read on a
-  thread of its own rather than behind the lengths being measured) to restore, under its old name
-  or with `_2` if that has been taken since, never over another file, or to delete for good, one
-  or all. Each listing deletes what has waited more than 30 days (`purgeTrash`), and adds up what
-  is left: the list's summary and the menu item say how much it holds, since it still takes space.
+  inside its own (`RecordingFiles.trash`), named `<time deleted, in ms>-<name>`: a rename on the
+  same volume, nothing copied, and hidden, so neither this list nor media apps show it, nor the
+  folder picker, which offers no hidden folder. The folder is named for the app, and only files
+  named as it names them, with an audio extension, count as its own (`trashed`), so a `.trash` of
+  another app's, or anything else put there, is never listed, restored or deleted. A Snackbar
+  offers Undo, which restores what `trash` returned, so nothing is asked first. Every folder a
+  recording is deleted in is remembered (`Settings.trashFolders`), so a change of save folder
+  loses nothing: each listing purges every one of them of what has waited more than 30 days
+  (`purgeTrash`), and forgets one whose trash is empty (but not one it can't reach, such as a card
+  taken out). The screen's menu lists what they all hold (most recent first, read on a thread of
+  its own rather than behind the lengths being measured, another folder's marked with it) to
+  restore, to the folder it was deleted from, under its old name or with `_2` if that has been
+  taken since, never over another file, or to delete for good, one or all. The list's summary and
+  the menu item say how much it holds, since it still takes space.
 - **Share** goes through a `FileProvider` (`res/xml/file_paths.xml`): shared storage is an
   `external-path`, and a folder on an SD card, outside it under `/storage`, a `root-path`.
 
@@ -473,7 +483,8 @@ take that doesn't end cleanly leaves on disk (`endTake`, and the WAV header befo
 for the recordings list, the rename rules and a WAV's length (finished, cut off, and claiming more
 than is there; the trash, and what it leaves alone), `PlayerControllerTest` for the player's rules over a fake output (a pause while it opens
 keeping it from starting among them), `PlaybackMeterQueueTest` for the playback spectrum's timing,
-and `Pcm16Test` for every PCM encoding the player's sink may be handed. Anything worth testing
+`Pcm16Test` for every PCM encoding the player's sink may be handed, and `OpenFileTest` for reads
+surviving an interrupt. Anything worth testing
 should be factored into a pure function like these rather than tested through Android classes.
 
 `SampleRateSupport` itself is deliberately *not* tested: every branch is a native probe, so there

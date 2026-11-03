@@ -240,8 +240,7 @@ class RecordingsActivity : AppCompatActivity() {
         val id = ++listing
         inBackground {
             RecordingFiles.finishRenames(dir)
-            RecordingFiles.purgeTrash(dir, System.currentTimeMillis())
-            val inTrash = RecordingFiles.trashed(dir).sumOf { it.size }
+            val inTrash = tidyTrash(dir).sumOf { it.size }
             val files = RecordingFiles.list(dir)
             main.post {
                 if (id != listing || isDestroyed) return@post
@@ -435,35 +434,61 @@ class RecordingsActivity : AppCompatActivity() {
     }
 
     /**
+     * Purges every trash a recording has been deleted into ([Settings.trashFolders], and [dir]'s),
+     * and what they still hold; a folder whose trash is empty is forgotten, unless it can't be
+     * reached (a card taken out), whose trash may come back with it. Waits on the storage.
+     */
+    private fun tidyTrash(dir: File): List<RecordingFiles.Trashed> {
+        val known = settings.trashFolders
+        val folders = (known.map(::File) + dir).distinct()
+        val now = System.currentTimeMillis()
+        for (f in folders) RecordingFiles.purgeTrash(f, now)
+        val items = RecordingFiles.trashedIn(folders)
+        val holding = items.map { it.folder.absolutePath }.toSet()
+        val kept = known.filter { it in holding || !File(it).isDirectory }.toSet()
+        if (kept != known) settings.trashFolders = kept
+        return items
+    }
+
+    /**
      * Moves [file] to Recently deleted, at once and with an Undo: it can be restored from there
      * for 30 days, so there is nothing to ask first.
      */
     private fun delete(file: File) {
         if (file == RecordingService.activeFile) return
-        player.release(file) // nothing plays on from a file that is gone
         val dir = file.parentFile ?: return
         val trashed = RecordingFiles.trash(file, System.currentTimeMillis())
-        refresh()
         if (trashed == null) {
-            // One another app removed meanwhile is gone already: nothing failed.
+            // One another app removed meanwhile is gone already: nothing failed. Either way the
+            // player keeps what it had.
             if (file.exists()) Toast.makeText(this, getString(R.string.recording_delete_failed, file.name), Toast.LENGTH_LONG).show()
+            refresh()
             return
         }
+        player.release(file) // deleted: it doesn't play on
+        settings.trashFolders = settings.trashFolders + dir.absolutePath
+        refresh()
         Snackbar.make(binding.root, getString(R.string.recording_deleted, file.name), Snackbar.LENGTH_LONG)
-            .setAction(R.string.undo) {
-                if (RecordingFiles.restore(trashed, dir) == null) {
-                    Toast.makeText(this, getString(R.string.trash_restore_failed, file.name), Toast.LENGTH_LONG).show()
-                }
-                refresh()
-            }
+            .setAction(R.string.undo) { restore(trashed) }
             .show()
     }
 
-    /** Recently deleted: restore a recording, delete one for good, or empty the lot. */
+    /** Puts [item] back where it was deleted from, and says so if that isn't the folder shown. */
+    private fun restore(item: RecordingFiles.Trashed) {
+        val back = RecordingFiles.restore(item)
+        val shown = folder ?: settings.saveDirectoryFile()
+        when {
+            back == null -> Toast.makeText(this, getString(R.string.trash_restore_failed, item.name), Toast.LENGTH_LONG).show()
+            back.parentFile != shown -> Toast.makeText(this, getString(R.string.trash_restored_elsewhere, back.name, back.parent), Toast.LENGTH_LONG).show()
+        }
+        refresh()
+    }
+
+    /** Recently deleted, from every folder it holds recordings of: restore one, delete one for good, or empty the lot. */
     private fun showTrash() {
         val dir = folder ?: settings.saveDirectoryFile()
         inBackground(trashThread) {
-            val items = RecordingFiles.trashed(dir)
+            val items = RecordingFiles.trashedIn((settings.trashFolders.map(::File) + dir))
             main.post {
                 if (isDestroyed) return@post
                 if (items.isEmpty()) {
@@ -473,11 +498,12 @@ class RecordingsActivity : AppCompatActivity() {
                 }
                 val dates = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
                 val labels = items.map {
-                    getString(R.string.trash_item, it.name, dates.format(Date(it.deletedAt)), StorageUtil.formatBytes(it.size))
+                    val label = getString(R.string.trash_item, it.name, dates.format(Date(it.deletedAt)), StorageUtil.formatBytes(it.size))
+                    if (it.folder == dir) label else getString(R.string.trash_item_elsewhere, label, it.folder.path)
                 }.toTypedArray()
                 AlertDialog.Builder(this)
                     .setTitle(R.string.trash_title)
-                    .setItems(labels) { _, which -> askTrashed(items[which], dir) }
+                    .setItems(labels) { _, which -> askTrashed(items[which]) }
                     .setNeutralButton(R.string.trash_empty_all) { _, _ -> askEmptyTrash(items) }
                     .setNegativeButton(R.string.cancel, null)
                     .show()
@@ -485,16 +511,11 @@ class RecordingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun askTrashed(item: RecordingFiles.Trashed, dir: File) {
+    private fun askTrashed(item: RecordingFiles.Trashed) {
         AlertDialog.Builder(this)
             .setTitle(item.name)
             .setMessage(R.string.trash_item_message)
-            .setPositiveButton(R.string.trash_restore) { _, _ ->
-                if (RecordingFiles.restore(item, dir) == null) {
-                    Toast.makeText(this, getString(R.string.trash_restore_failed, item.name), Toast.LENGTH_LONG).show()
-                }
-                refresh()
-            }
+            .setPositiveButton(R.string.trash_restore) { _, _ -> restore(item) }
             .setNeutralButton(R.string.trash_delete_forever) { _, _ ->
                 if (!item.file.delete() && item.file.exists()) {
                     Toast.makeText(this, getString(R.string.recording_delete_failed, item.name), Toast.LENGTH_LONG).show()

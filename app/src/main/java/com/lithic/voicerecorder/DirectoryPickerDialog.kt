@@ -146,7 +146,7 @@ class DirectoryPickerDialog : DialogFragment() {
         listContainer.removeAllViews()
 
         val children = current.listFiles()
-            ?.filter { it.isDirectory }
+            ?.filter { it.isDirectory && !it.name.startsWith(".") } // hidden ones (the trash) aren't for recordings
             ?.sortedBy { it.name.lowercase() }
             ?: emptyList()
 

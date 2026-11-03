@@ -27,8 +27,8 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.io.Closeable
 import java.nio.ByteBuffer
-import java.nio.channels.FileChannel
 import kotlin.math.min
 
 /**
@@ -50,20 +50,20 @@ class ExoOutput(private val context: Context) : AudioOutput {
     private val meter = PlaybackMeterQueue()
     private val sink = MeterSink(DefaultAudioSink.Builder(context).build(), meter)
     private var player: ExoPlayer? = null
-    private var file: RandomAccessFile? = null
+    private var handle: OpenFile? = null
     private var released = false
 
     override fun open(file: File, onReady: (durationMs: Long) -> Unit, onEnd: () -> Unit, onError: (String) -> Unit) {
         val opened = try {
-            RandomAccessFile(file, "r")
+            OpenFile(RandomAccessFile(file, "r"))
         } catch (e: IOException) {
             main.post { if (!released) onError(context.getString(R.string.player_cant_open, file.name, e.message ?: e.javaClass.simpleName)) }
             return
         }
-        this.file = opened
+        handle = opened
         val uri = Uri.fromFile(file)
         val source = ProgressiveMediaSource.Factory(
-            { OpenFileDataSource(opened.channel, uri) },
+            { OpenFileDataSource(opened, uri) },
             // Seeking in a file with no index of its own (ADTS AAC, some MP3s) by its bitrate.
             DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true),
         ).createMediaSource(MediaItem.fromUri(uri))
@@ -126,10 +126,7 @@ class ExoOutput(private val context: Context) : AudioOutput {
     override val positionMs: Long
         get() = player?.currentPosition ?: 0L
 
-    override fun takeSpectrum(out: FloatArray): Boolean {
-        val heard = sink.heardUs
-        return heard != AudioSink.CURRENT_POSITION_NOT_SET && meter.take(heard, out)
-    }
+    override fun takeSpectrum(out: FloatArray): Boolean = meter.take(out)
 
     override fun release() {
         released = true
@@ -137,10 +134,10 @@ class ExoOutput(private val context: Context) : AudioOutput {
         player?.release()
         player = null
         try {
-            file?.close()
+            handle?.close()
         } catch (_: IOException) {
         }
-        file = null
+        handle = null
         meter.clear()
     }
 
@@ -155,9 +152,9 @@ class ExoOutput(private val context: Context) : AudioOutput {
     /**
      * The output's own sink, with the spectrum's taps on its way: each decoded buffer is queued
      * once, by its presentation time, as it is first handed over; and the time the output has
-     * reached is noted each time the player asks it. The two are the sink's own timebase, so they
-     * agree whatever the player adds to the media's times. Called on the player's thread; [heardUs]
-     * is read on the main thread.
+     * reached is told to the queue each time the player asks it (about every 10 ms while it
+     * plays). The two are the sink's own timebase, so they agree whatever the player adds to the
+     * media's times. Called on the player's thread.
      */
     private class MeterSink(sink: AudioSink, private val meter: PlaybackMeterQueue) : ForwardingAudioSink(sink) {
         private var encoding = C.ENCODING_INVALID
@@ -166,11 +163,6 @@ class ExoOutput(private val context: Context) : AudioOutput {
 
         /** The buffer being handed over, already queued: the player hands one over until it is all taken. */
         private var queued: ByteBuffer? = null
-
-        /** Where the output is, in the buffers' time, or [AudioSink.CURRENT_POSITION_NOT_SET]. */
-        @Volatile
-        var heardUs = AudioSink.CURRENT_POSITION_NOT_SET
-            private set
 
         override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
             encoding = inputFormat.pcmEncoding
@@ -188,7 +180,9 @@ class ExoOutput(private val context: Context) : AudioOutput {
         }
 
         override fun getCurrentPositionUs(sourceEnded: Boolean): Long =
-            super.getCurrentPositionUs(sourceEnded).also { heardUs = it }
+            super.getCurrentPositionUs(sourceEnded).also {
+                meter.heard(if (it == AudioSink.CURRENT_POSITION_NOT_SET) PlaybackMeterQueue.UNKNOWN else it)
+            }
 
         override fun flush() {
             startAfresh()
@@ -202,23 +196,26 @@ class ExoOutput(private val context: Context) : AudioOutput {
 
         private fun startAfresh() {
             queued = null
-            heardUs = AudioSink.CURRENT_POSITION_NOT_SET
             meter.clear()
         }
     }
 
     /**
-     * Reads the recording through the file [channel] opened once, by position, so it is the same
-     * file however often the player opens it again (each seek does), even renamed meanwhile.
+     * Reads the recording through the [file] opened once, so it is the same file however often the
+     * player opens it again (each seek does), even renamed meanwhile.
      */
-    private class OpenFileDataSource(private val channel: FileChannel, private val uri: Uri) : BaseDataSource(false) {
+    private class OpenFileDataSource(private val file: OpenFile, private val uri: Uri) : BaseDataSource(false) {
         private var position = 0L
         private var remaining = 0L
         private var opened = false
 
         override fun open(dataSpec: DataSpec): Long {
             transferInitializing(dataSpec)
-            val size = channel.size()
+            val size = try {
+                file.size
+            } catch (e: IOException) {
+                throw DataSourceException(e, PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
+            }
             if (dataSpec.position > size) throw DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
             position = dataSpec.position
             remaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else size - position
@@ -231,7 +228,7 @@ class ExoOutput(private val context: Context) : AudioOutput {
             if (length == 0) return 0
             if (remaining == 0L) return C.RESULT_END_OF_INPUT
             val n = try {
-                channel.read(ByteBuffer.wrap(buffer, offset, min(length.toLong(), remaining).toInt()), position)
+                file.read(position, buffer, offset, min(length.toLong(), remaining).toInt())
             } catch (e: IOException) {
                 throw DataSourceException(e, PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
             }
@@ -268,4 +265,27 @@ class ExoOutput(private val context: Context) : AudioOutput {
             .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
             .build()
     }
+}
+
+/**
+ * A file opened once and read by position, from whichever thread asks: what the player reads a
+ * recording through. The reads go through [RandomAccessFile], under a lock for its file pointer,
+ * not through a `FileChannel`: Media3 interrupts its loading thread to cancel a load (a seek
+ * beyond what is buffered does), and an interrupt closes a channel for good, failing every read
+ * after it. Media3's own file source reads through a [RandomAccessFile] too.
+ */
+internal class OpenFile(private val file: RandomAccessFile) : Closeable {
+
+    /** How long the file is now. */
+    val size: Long
+        get() = synchronized(file) { file.length() }
+
+    /** Reads up to [length] bytes at [position] into [buffer] from [offset]: how many, or -1 at the end. */
+    fun read(position: Long, buffer: ByteArray, offset: Int, length: Int): Int = synchronized(file) {
+        file.seek(position)
+        file.read(buffer, offset, length)
+    }
+
+    /** Not under the lock: a read stuck on a drive that went mustn't hold up letting go. */
+    override fun close() = file.close()
 }

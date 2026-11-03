@@ -94,7 +94,7 @@ class RecordingFilesTest {
         assertEquals(now, item.deletedAt)
         assertEquals(trashed, item) // what trash() says it put there is what the trash lists
 
-        assertEquals(File(tmp.root, "Take.wav"), RecordingFiles.restore(item, tmp.root))
+        assertEquals(File(tmp.root, "Take.wav"), RecordingFiles.restore(item))
         assertEquals(listOf("Take.wav"), RecordingFiles.list(tmp.root).map { it.file.name })
         assertEquals(emptyList<RecordingFiles.Trashed>(), RecordingFiles.trashed(tmp.root))
     }
@@ -104,7 +104,7 @@ class RecordingFilesTest {
     fun a_restored_recording_never_overwrites() {
         RecordingFiles.trash(file("Take.wav"), now)
         file("Take.wav")
-        val back = RecordingFiles.restore(RecordingFiles.trashed(tmp.root).single(), tmp.root)
+        val back = RecordingFiles.restore(RecordingFiles.trashed(tmp.root).single())
         assertEquals(File(tmp.root, "Take_2.wav"), back)
     }
 
@@ -116,19 +116,39 @@ class RecordingFilesTest {
     }
 
     /**
-     * A trash folder holds only what this app put there; anything else in it (another app's,
-     * a note, a name that isn't a time and a recording) is neither listed nor ever deleted.
+     * The trash counts as its own only recordings named as it names them; anything else put there
+     * (a note, a recording without a time before its name) is neither listed nor ever deleted.
      */
     @Test
     fun the_trash_leaves_alone_what_it_did_not_put_there() {
         val trash = File(tmp.root, RecordingFiles.TRASH_FOLDER).apply { mkdirs() }
-        val foreign = listOf("20240115-notes.txt", "20240115-take.wav", "1700000000000-notes.txt", "take.wav")
+        val foreign = listOf("20240115-notes.txt", "1700000000000-notes.txt", "take.wav", "x-take.wav")
             .map { File(trash, it).apply { writeBytes(byteArrayOf(1)) } }
         RecordingFiles.trash(file("Take.wav"), now)
         assertEquals(listOf("Take.wav"), RecordingFiles.trashed(tmp.root).map { it.name })
         RecordingFiles.purgeTrash(tmp.root, now = now + 365L * 24 * 60 * 60 * 1000)
         assertEquals(emptyList<RecordingFiles.Trashed>(), RecordingFiles.trashed(tmp.root))
         for (f in foreign) assertEquals(f.name, true, f.exists())
+    }
+
+    /** Deleted while the phone's clock was wrong (before 2001: fewer digits), it is still listed and still goes. */
+    @Test
+    fun a_recording_deleted_with_the_clock_wrong_is_still_its_own() {
+        val trashed = RecordingFiles.trash(file("Take.wav"), now = 946_684_800_000L)!! // 1 January 2000
+        assertEquals(listOf(trashed), RecordingFiles.trashed(tmp.root))
+        RecordingFiles.purgeTrash(tmp.root, now)
+        assertEquals(emptyList<RecordingFiles.Trashed>(), RecordingFiles.trashed(tmp.root))
+    }
+
+    /** Restored, it goes back to the folder it was deleted from, and the trashes of several folders list together. */
+    @Test
+    fun a_recording_comes_back_to_its_own_folder() {
+        val other = tmp.newFolder("other")
+        RecordingFiles.trash(file("Here.wav"), now)
+        RecordingFiles.trash(File(other, "There.wav").apply { writeBytes(byteArrayOf(1)) }, now + 1)
+        val items = RecordingFiles.trashedIn(listOf(tmp.root, other, tmp.root))
+        assertEquals(listOf("There.wav", "Here.wav"), items.map { it.name })
+        assertEquals(File(other, "There.wav"), RecordingFiles.restore(items.first()))
     }
 
     @Test

@@ -1,0 +1,1 @@
+A seek in a long recording no longer risks stopping the player, the spectrum follows a WAV as it plays rather than in jumps, and Recently deleted keeps track of every folder you deleted in, so changing the save folder neither loses deleted recordings nor keeps them past 30 days. The folder picker no longer offers hidden folders.

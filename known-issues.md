@@ -185,8 +185,9 @@ Deleting moves a recording into a hidden `.voicerecorder-trash` folder beside it
 URI, and every request shows a system dialog; the app reaches its files through "All files
 access" instead, in any folder, SD cards included. So a deleted recording is found under
 **Recently deleted** in this app, not in a Files app's trash. The 30 days are counted when the app
-lists the folder: a recording deleted and never looked at again stays until the app is next opened
-on that folder.
+lists the recordings (every folder a recording was deleted in is purged then, whichever is the
+save folder): a recording deleted and never looked at again stays until the Recordings screen is
+next opened.
 
 ## Not yet implemented (possible future work)
 - A level meter during playback: the player shows the spectrum of what is playing, but not the

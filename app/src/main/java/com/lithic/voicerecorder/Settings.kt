@@ -65,6 +65,15 @@ class Settings(context: Context) {
         get() = CaptureSource.fromId(prefs.getString(KEY_CAPTURE_SOURCE, null))
         set(value) = prefs.edit().putString(KEY_CAPTURE_SOURCE, value.id).apply()
 
+    /**
+     * The folders a recording has been deleted in, whose trash may hold something: each is listed
+     * and purged whatever the save folder is now, so a recording deleted before a change of folder
+     * is neither lost from Recently deleted nor kept past its 30 days.
+     */
+    var trashFolders: Set<String>
+        get() = prefs.getStringSet(KEY_TRASH_FOLDERS, null)?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_TRASH_FOLDERS, value).apply()
+
     /** Absolute path of the directory new recordings are saved into (may be null before first-run setup). */
     var saveDirectory: String?
         get() = prefs.getString(KEY_SAVE_DIR, null)
@@ -149,6 +158,7 @@ class Settings(context: Context) {
 
     companion object {
         private const val KEY_FIRST_RUN_DONE = "first_run_done"
+        private const val KEY_TRASH_FOLDERS = "trash_folders"
         private const val KEY_FORMAT = "default_format"
         private const val KEY_SAMPLE_RATE = "default_sample_rate"
         private const val KEY_BITRATE = "default_bitrate"

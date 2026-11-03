@@ -93,7 +93,8 @@ built-in directory navigator.
   extension is kept, and nothing is ever overwritten) or deletes it, with an **Undo**: a deleted
   recording waits under **Recently deleted** (the screen's own **⋮** menu) for 30 days, to be
   restored or deleted for good, then goes by itself; the list's summary and the menu say how much
-  it holds, since it still takes space until then. The player plays the formats Android plays
+  it holds, since it still takes space until then. It keeps what was deleted in other folders too,
+  should you change the save folder, and restores each to the folder it came from. The player plays the formats Android plays
   (WAV of any bit depth, M4A, Opus, MP3, FLAC, AMR and more), with any number of channels. The "Saved" message after a recording has a **Play**
   button that opens it there. Playing pauses when you leave the screen, when a call or another app
   takes the sound (and says so if one has it when you press Play), and when headphones are

@@ -84,15 +84,19 @@ class SpectrumAnalyzer {
      * Feed one interleaved 16-bit little-endian PCM buffer: [len] valid bytes of [channels]
      * channels at [sampleRate] Hz. A change of rate starts the meter afresh.
      */
-    fun push(data: ByteArray, len: Int, channels: Int, sampleRate: Int) {
+    fun push(data: ByteArray, len: Int, channels: Int, sampleRate: Int) = push(data, 0, len, channels, sampleRate)
+
+    /** As [push], from [offset] in [data]: the part of a block heard so far (see [PlaybackMeterQueue]). */
+    fun push(data: ByteArray, offset: Int, len: Int, channels: Int, sampleRate: Int) {
         val g = geometry?.takeIf { it.sampleRate == sampleRate }
             ?: Geometry(sampleRate, bandCount).also {
                 geometry = it
                 reset()
             }
         val frameBytes = 2 * channels
-        var i = 0
-        while (i + frameBytes <= len) {
+        val end = offset + len
+        var i = offset
+        while (i + frameBytes <= end) {
             // Down-mix all channels to mono, normalise to [-1, 1].
             var acc = 0
             for (c in 0 until channels) {

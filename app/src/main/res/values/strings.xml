@@ -172,6 +172,8 @@
     <string name="trash_item_message">Restore it to the recordings, or delete it for good. Left here, it goes by itself 30 days after it was deleted.</string>
     <string name="trash_restore">Restore</string>
     <string name="trash_restore_failed">Couldn\'t restore %1$s</string>
+    <string name="trash_item_elsewhere">%1$s · in %2$s</string>
+    <string name="trash_restored_elsewhere">%1$s is back in %2$s</string>
     <string name="trash_delete_forever">Delete for good</string>
     <string name="trash_empty_all">Empty</string>
     <plurals name="trash_empty_message">

@@ -110,19 +110,25 @@ object RecordingFiles {
      */
     const val TRASH_FOLDER = ".voicerecorder-trash"
 
-    /** A deleted recording's name in the trash: the moment it was deleted (ms, 13 digits), then its name. */
-    private val TRASHED_NAME = Regex("""(\d{13})-(.+)""")
+    /**
+     * A deleted recording's name in the trash: the moment it was deleted (ms since 1970: 13 digits,
+     * or fewer on a phone whose clock was wrong), then its name.
+     */
+    private val TRASHED_NAME = Regex("""(\d{1,18})-(.+)""")
 
     /** How long a deleted recording is kept before it goes for good. */
     const val TRASH_KEEP_MS = 30L * 24 * 60 * 60 * 1000
 
     /** A deleted recording: [name] is what it was called, [deletedAt] when (ms since 1970). */
-    data class Trashed(val file: File, val name: String, val deletedAt: Long, val size: Long)
+    data class Trashed(val file: File, val name: String, val deletedAt: Long, val size: Long) {
+        /** The folder it was deleted from, whose trash it is in. */
+        val folder: File get() = file.parentFile!!.parentFile!!
+    }
 
     /**
      * Moves [file] into its folder's trash, as `<now>-<name>`, so it can be restored; what it is
      * there, or null if it couldn't be moved. A move within the folder's volume: nothing is copied.
-     * [now] is the time in ms (13 digits), as the trash's names hold it.
+     * [now] is the time in ms, as the trash's names hold it.
      */
     fun trash(file: File, now: Long): Trashed? {
         val dir = File(file.parentFile ?: return null, TRASH_FOLDER)
@@ -135,8 +141,8 @@ object RecordingFiles {
     }
 
     /**
-     * What [folder]'s trash holds, the most recently deleted first: only recordings this app put
-     * there, named as [trash] names them, since only those are its own to list, restore and delete.
+     * What [folder]'s trash holds, the most recently deleted first: only recordings, named as
+     * [trash] names them, since only those are its own to list, restore and delete.
      */
     fun trashed(folder: File): List<Trashed> =
         (File(folder, TRASH_FOLDER).listFiles() ?: emptyArray())
@@ -148,12 +154,17 @@ object RecordingFiles {
             }
             .sortedByDescending { it.deletedAt }
 
+    /** What the trashes of all [folders] hold, the most recently deleted first. */
+    fun trashedIn(folders: Collection<File>): List<Trashed> =
+        folders.distinct().flatMap { trashed(it) }.sortedByDescending { it.deletedAt }
+
     /**
-     * Puts [item] back in [folder] under its old name, or with `_2`, `_3`, … if that name has been
-     * taken since: never over another file. The restored file, or null if it couldn't be moved.
+     * Puts [item] back in the folder it was deleted from, under its old name, or with `_2`, `_3`, …
+     * if that name has been taken since: never over another file. The restored file, or null if it
+     * couldn't be moved.
      */
-    fun restore(item: Trashed, folder: File): File? {
-        val target = StorageUtil.uniqueFile(folder, item.name.substringBeforeLast('.'), item.name.substringAfterLast('.'))
+    fun restore(item: Trashed): File? {
+        val target = StorageUtil.uniqueFile(item.folder, item.name.substringBeforeLast('.'), item.name.substringAfterLast('.'))
         return if (item.file.renameTo(target)) target else null
     }
 
