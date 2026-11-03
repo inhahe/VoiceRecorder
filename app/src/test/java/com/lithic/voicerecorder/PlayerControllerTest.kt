@@ -151,11 +151,16 @@ class PlayerControllerTest {
     }
 
     @Test
-    fun without_audio_focus_it_doesnt_start() {
+    fun without_audio_focus_it_doesnt_start_and_says_why() {
         focus = false
         val out = opened(a)
         assertFalse(out.playing)
         assertFalse(player.isPlaying)
+        assertEquals("Another app is using the sound", player.notice)
+        focus = true
+        player.toggle()
+        assertTrue(out.playing)
+        assertNull(player.notice)
     }
 
     @Test

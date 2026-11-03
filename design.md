@@ -388,7 +388,11 @@ the screen is started.
   start playing.
 - **Sound etiquette.** It asks for transient audio focus and pauses on any loss, ducking included:
   a voice recording under a call or a navigation prompt is not music to play quietly beneath it.
-  Headphones unplugged (`ACTION_AUDIO_BECOMING_NOISY`) pause it before the speaker takes over.
+  Refused focus (a call under way) leaves it paused and says so in the player bar
+  (`PlayerController.notice`), rather than Play doing nothing. Headphones unplugged
+  (`ACTION_AUDIO_BECOMING_NOISY`) pause it before the speaker takes over. The player and its focus
+  request share one set of `AudioAttributes` (`MediaPlayerOutput.ATTRIBUTES`), since the system
+  decides from them how to treat the sound.
 - **Renaming and deleting.** `MediaPlayer` is given the file's descriptor and keeps its own
   duplicate, so a rename doesn't interrupt playing, and `PlayerController.renamed` follows it. A
   delete first lets go of the file (`release`). Renames keep the extension, refuse a name that
@@ -397,19 +401,26 @@ the screen is started.
   list), and use the record dialog's character rules (`RecordingFiles.ILLEGAL_FILENAME_CHARS`,
   shared with it). A change of case alone goes through a temporary name (`RecordingFiles.rename`):
   on shared storage, which ignores case, renaming straight to it succeeds and changes nothing
-  (measured on the emulator), and a rename only counts once the folder lists the new name.
+  (measured on the emulator), and a rename only counts once the folder lists the new name. The
+  temporary name is the new one plus `.renaming`: not audio, so not listed, but not hidden either,
+  and a rename the app died in the middle of is finished before the next listing
+  (`finishRenames`). A recording that couldn't be opened or played stays named in the player, so
+  Play tries again, but isn't marked in the list.
 - **The take being recorded is left alone.** `RecordingService.activeFile` is the service's
   current file, so the screen, which doesn't bind to the service, shows it as "Recording…" and
   won't play, measure, rename, share or delete it. Playing anything else aloud while it records
-  asks first, unless headphones (wired, USB or Bluetooth) are attached: from the speaker, the
-  microphone would record it into the take.
+  asks first, unless media goes to headphones (wired, USB, Bluetooth A2DP or LE; not SCO, which is
+  for calls; from Android 13, where Android actually routes the player's sound): from the
+  speaker, the microphone would record it into the take.
 - **Seeking.** A drag seeks when let go; a key or TalkBack's adjust action moves the bar without a
   drag and seeks at once. A bar disabled mid-drag never reports the drag's end, so disabling it
   ends the drag, or the position would stay frozen after.
 - **A cut-off WAV plays through a corrected header.** Android's `MediaPlayer` refuses a WAV whose
   sizes are unknown ("damaged", measured on the API 36 emulator), so `MediaPlayerOutput` gives it
   one through a `MediaDataSource` over a `WavView`: the file as it reads had the take finished,
-  its two sizes filled in and its end cut to the last whole frame. The file itself isn't changed.
+  its two sizes filled in and its end cut to the last whole frame. The view reads the file and
+  overlays just the two size fields, so a large chunk before the data costs nothing. The file
+  itself isn't changed.
   A WAV whose sizes are right is played by descriptor as before.
 - **Share** goes through a `FileProvider` (`res/xml/file_paths.xml`): shared storage is an
   `external-path`, and a folder on an SD card, outside it under `/storage`, a `root-path`.

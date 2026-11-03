@@ -103,7 +103,7 @@ class RecordingsActivity : AppCompatActivity() {
         binding.recordingsList.layoutManager = LinearLayoutManager(this)
         binding.recordingsList.adapter = adapter
         binding.playButton.setOnClickListener {
-            if (player.isPlayingOrStarting) player.pause() else checkingRecording(player.file) { player.toggle() }
+            if (player.isPlayingOrStarting) player.pause() else checkingRecording(player.file) { player.resume() }
         }
         binding.rewindButton.setOnClickListener { player.stop() }
         binding.positionBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -132,14 +132,6 @@ class RecordingsActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString(STATE_TO_PLAY, toPlay)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        intent.getStringExtra(EXTRA_PLAY)?.let {
-            toPlay = it
-            refresh()
-        }
     }
 
     override fun onStart() {
@@ -198,8 +190,8 @@ class RecordingsActivity : AppCompatActivity() {
 
     /**
      * Runs [job] on the background thread, unless the screen is gone: a folder change already on
-     * its way from the observer's thread can still post a refresh after [onDestroy] (seen when
-     * the phone is turned), and the executor is shut down by then.
+     * its way from the observer's thread can still post a refresh after [onDestroy], and the
+     * executor is shut down by then.
      */
     private fun inBackground(job: () -> Unit) {
         if (isDestroyed || background.isShutdown) return
@@ -215,6 +207,7 @@ class RecordingsActivity : AppCompatActivity() {
         val dir = folder ?: settings.saveDirectoryFile()
         val id = ++listing
         inBackground {
+            RecordingFiles.finishRenames(dir)
             val files = RecordingFiles.list(dir)
             main.post {
                 if (id != listing || isDestroyed) return@post
@@ -282,7 +275,7 @@ class RecordingsActivity : AppCompatActivity() {
         when {
             row.file == RecordingService.activeFile -> Toast.makeText(this, R.string.recording_in_progress, Toast.LENGTH_SHORT).show()
             row.file == player.file && player.isPlayingOrStarting -> player.pause()
-            row.file == player.file -> checkingRecording(row.file) { player.toggle() }
+            row.file == player.file -> checkingRecording(row.file) { player.resume() }
             else -> play(row.file)
         }
     }
@@ -309,9 +302,15 @@ class RecordingsActivity : AppCompatActivity() {
             .show()
     }
 
+    /** Whether the player's sound would go somewhere only the listener hears: where Android routes it, where it can say. */
     private fun headphonesAttached(): Boolean {
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        return audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in PRIVATE_OUTPUTS }
+        val types = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            audio.getAudioDevicesForAttributes(MediaPlayerOutput.ATTRIBUTES).map { it.type }
+        } else {
+            audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.type }
+        }
+        return types.any { it in PRIVATE_OUTPUTS }
     }
 
     private fun onRowMenu(row: Row, anchor: View) {
@@ -384,6 +383,7 @@ class RecordingsActivity : AppCompatActivity() {
                             dialog.dismiss() // the take started meanwhile
                         } else if (RecordingFiles.rename(file, check.target)) {
                             player.renamed(file, check.target)
+                            RecordingLengths.renamed(file, check.target)
                             dialog.dismiss()
                             refresh()
                         } else {
@@ -417,8 +417,9 @@ class RecordingsActivity : AppCompatActivity() {
     private fun onPlayerChanged() {
         val file = player.file
         binding.playerTitle.text = file?.name ?: getString(R.string.player_nothing_loaded)
-        binding.playerError.text = player.error
-        binding.playerError.visibility = if (player.error != null) View.VISIBLE else View.GONE
+        val problem = player.error ?: player.notice
+        binding.playerError.text = problem
+        binding.playerError.visibility = if (problem != null) View.VISIBLE else View.GONE
         val playing = player.isPlayingOrStarting
         binding.playButton.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
         binding.playButton.contentDescription = getString(if (playing) R.string.player_pause else R.string.player_play)
@@ -433,7 +434,9 @@ class RecordingsActivity : AppCompatActivity() {
         showPosition()
         main.removeCallbacks(tick)
         if (player.isPlaying) main.postDelayed(tick, TICK_MS)
-        adapter.markPlayer(file, player.isPlaying)
+        // One that couldn't be opened or played stays named in the player, so Play tries again,
+        // but isn't marked in the list: the bar says why instead.
+        adapter.markPlayer(if (player.error == null) file else null, player.isPlayingOrStarting)
     }
 
     private fun showPosition() {
@@ -451,14 +454,16 @@ class RecordingsActivity : AppCompatActivity() {
     // --- adapter --------------------------------------------------------------
 
     private inner class RecordingsAdapter : RecyclerView.Adapter<RecordingsAdapter.Holder>() {
-        private var rows: List<Row> = emptyList()
+        private val rows = ArrayList<Row>()
         private var loaded: File? = null
         private var playing = false
+        private val dates = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 
         inner class Holder(val item: ItemRecordingBinding) : RecyclerView.ViewHolder(item.root)
 
         fun submit(newRows: List<Row>) {
-            rows = newRows
+            rows.clear()
+            rows.addAll(newRows)
             @Suppress("NotifyDataSetChanged") // a folder listing, a handful of rows: no diffing needed
             notifyDataSetChanged()
         }
@@ -466,7 +471,7 @@ class RecordingsActivity : AppCompatActivity() {
         fun update(file: File, change: (Row) -> Row) {
             val i = rows.indexOfFirst { it.file == file }
             if (i < 0) return
-            rows = rows.toMutableList().also { it[i] = change(it[i]) }
+            rows[i] = change(rows[i])
             notifyItemChanged(i)
         }
 
@@ -495,7 +500,7 @@ class RecordingsActivity : AppCompatActivity() {
                     row.lengthMs == null -> "?"
                     else -> RecordingFiles.clock(row.lengthMs)
                 }
-                val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(row.modified))
+                val date = dates.format(Date(row.modified))
                 recordingDetails.text = getString(R.string.recording_details, length, StorageUtil.formatBytes(row.size), date)
                 playerMark.visibility = if (inPlayer) View.VISIBLE else View.GONE
                 playerMark.setImageResource(if (inPlayer && playing) R.drawable.ic_volume_up else R.drawable.ic_pause)
@@ -515,8 +520,9 @@ class RecordingsActivity : AppCompatActivity() {
 
         /** Outputs only the listener hears, so a take being recorded doesn't pick the sound up. */
         private val PRIVATE_OUTPUTS = setOf(
+            // Not Bluetooth SCO: that is for calls, and media doesn't go to it.
             AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_BLE_HEADSET,
         )
 
         private const val TICK_MS = 200L
@@ -542,6 +548,11 @@ object RecordingLengths {
 
     fun put(file: File, size: Long, modified: Long, ms: Long?) {
         known[file.path] = Measured(size, modified, ms)
+    }
+
+    /** A recording renamed: its length goes with it (a rename keeps its size and time). */
+    fun renamed(from: File, to: File) {
+        known.remove(from.path)?.let { known[to.path] = it }
     }
 }
 
@@ -573,6 +584,7 @@ class RecordingsModel(app: Application) : AndroidViewModel(app) {
     val player: PlayerController = PlayerController(
         newOutput = { MediaPlayerOutput(app) },
         requestFocus = { audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED },
+        focusRefused = app.getString(R.string.player_focus_refused),
         abandonFocus = { audioManager.abandonAudioFocusRequest(focusRequest) },
         onChange = { onChange?.invoke() },
     )

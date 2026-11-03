@@ -22,7 +22,6 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.snackbar.Snackbar
 import com.lithic.voicerecorder.databinding.ActivityMainBinding
 import java.io.File
-import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -697,11 +696,6 @@ class MainActivity : AppCompatActivity() {
         val totalSec = ms / 1000
         if (totalSec == shownSeconds) return // polled every 50 ms; it changes once a second
         shownSeconds = totalSec
-        val h = totalSec / 3600
-        val m = (totalSec % 3600) / 60
-        val s = totalSec % 60
-        binding.timerText.text =
-            if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
-            else String.format(Locale.US, "%02d:%02d", m, s)
+        binding.timerText.text = RecordingFiles.clock(ms, padMinutes = true)
     }
 }

@@ -95,18 +95,15 @@ data class WavLayout(
  */
 class WavView(file: File, private val layout: WavLayout) : Closeable {
     private val raf = RandomAccessFile(file, "r")
-    private val header = ByteArray(layout.dataStart.toInt())
 
-    init {
-        try {
-            raf.readFully(header)
-            put32(header, 4, layout.end - 8) // RIFF size: everything after it, up to the data's end
-            put32(header, header.size - 4, layout.dataBytes) // the data chunk's own size
-        } catch (e: IOException) {
-            raf.close()
-            throw e
-        }
-    }
+    /**
+     * The two size fields, as they should read, by where they are in the file: everything else is
+     * read from the file itself, so whatever comes before the data (cover art, say) costs nothing.
+     */
+    private val patches = listOf(
+        4L to le32Bytes(layout.end - 8), // RIFF size: everything after it, up to the data's end
+        (layout.dataStart - 4) to le32Bytes(layout.dataBytes), // the data chunk's own size
+    )
 
     /** How long the view is: where the last whole frame ends. */
     val length: Long get() = layout.end
@@ -116,14 +113,13 @@ class WavView(file: File, private val layout: WavLayout) : Closeable {
     fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
         if (position >= length) return -1
         val n = minOf(size.toLong(), length - position).toInt()
-        var done = 0
-        if (position < header.size) {
-            done = minOf(n.toLong(), header.size - position).toInt()
-            System.arraycopy(header, position.toInt(), buffer, offset, done)
-        }
-        if (done < n) {
-            raf.seek(position + done)
-            raf.readFully(buffer, offset + done, n - done)
+        raf.seek(position)
+        raf.readFully(buffer, offset, n)
+        for ((at, bytes) in patches) {
+            for (i in bytes.indices) {
+                val p = at + i - position
+                if (p in 0 until n) buffer[offset + p.toInt()] = bytes[i]
+            }
         }
         return n
     }
@@ -131,7 +127,5 @@ class WavView(file: File, private val layout: WavLayout) : Closeable {
     @Synchronized
     override fun close() = raf.close()
 
-    private fun put32(b: ByteArray, at: Int, value: Long) {
-        for (i in 0 until 4) b[at + i] = (value shr (8 * i)).toByte()
-    }
+    private fun le32Bytes(value: Long) = ByteArray(4) { i -> (value shr (8 * i)).toByte() }
 }

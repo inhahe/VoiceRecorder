@@ -74,6 +74,20 @@ class RecordingFilesTest {
         assertEquals(listOf("Take.wav"), tmp.root.list()!!.toList()) // listed under the new case, nothing left behind
     }
 
+    /** The app killed between a change of case's two steps: the next listing finishes it. */
+    @Test
+    fun a_change_of_case_cut_short_is_finished_before_listing() {
+        file("Take.wav.renaming")
+        RecordingFiles.finishRenames(tmp.root)
+        assertEquals(listOf("Take.wav"), tmp.root.list()!!.toList())
+    }
+
+    @Test
+    fun the_recording_timer_pads_its_minutes() {
+        assertEquals("00:05", RecordingFiles.clock(5_000, padMinutes = true))
+        assertEquals("1:00:05", RecordingFiles.clock(3_605_000, padMinutes = true))
+    }
+
     @Test
     fun a_rename_is_listed_under_its_new_name() {
         val take = file("Take.wav")

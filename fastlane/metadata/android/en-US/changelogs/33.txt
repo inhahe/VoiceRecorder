@@ -1,0 +1,1 @@
+Recordings: Play says so when a call or another app has the sound instead of doing nothing; a rename interrupted by the app closing is finished next time; screens no longer jump into place when they open; very large WAV files no longer risk running out of memory.

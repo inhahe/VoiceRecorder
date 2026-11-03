@@ -12,18 +12,19 @@ import androidx.core.view.updatePadding
  * On API 35 (targetSdk 35) the window is edge-to-edge, and whether the AppCompat action bar then
  * overlays the content frame differs between devices and Android versions: on some the content is
  * laid out from the very top of the window, behind the status bar and the action bar; on others
- * (the API 36 emulator) it already starts below the action bar, and padding it by the bar's height
- * again left a gap that tall. So the cover is measured, in window coordinates, once the view is
- * laid out: the action bar's bottom (or the status bar's, with no action bar) above the view's
- * top, and the navigation bar over its bottom. Applied to the root of each activity; the view's own
+ * (the API 36 emulator) it already starts below the action bar. So the cover is measured, in
+ * window coordinates, once the view is laid out: the action bar's bottom (or the status bar's,
+ * with no action bar) above the view's top, the navigation bar over its bottom, and the side bars
+ * and a camera cutout over its sides. Applied to the root of each activity; the view's own
  * padding is kept and added to.
  */
 fun View.padBelowActionBar() {
     val base = intArrayOf(paddingLeft, paddingTop, paddingRight, paddingBottom)
     val actionBar = rootView.findViewById<View>(androidx.appcompat.R.id.action_bar_container)
 
-    fun apply() {
-        val insets = ViewCompat.getRootWindowInsets(this) ?: return
+    /** Pads by the cover as it is now; true if that changed the padding. */
+    fun apply(): Boolean {
+        val insets = ViewCompat.getRootWindowInsets(this) ?: return false
         // The side bars (three-button navigation in landscape) and a camera cutout, too.
         val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
         val here = IntArray(2).also { getLocationInWindow(it) }
@@ -34,17 +35,27 @@ fun View.padBelowActionBar() {
         val top = (maxOf(bars.top, barBottom) - here[1]).coerceAtLeast(0)
         val right = (here[0] + width - (window.width - bars.right)).coerceAtLeast(0)
         val bottom = (here[1] + height - (window.height - bars.bottom)).coerceAtLeast(0)
-        if (paddingLeft != base[0] + left || paddingTop != base[1] + top || paddingRight != base[2] + right || paddingBottom != base[3] + bottom) {
-            updatePadding(left = base[0] + left, top = base[1] + top, right = base[2] + right, bottom = base[3] + bottom)
+        if (paddingLeft == base[0] + left && paddingTop == base[1] + top && paddingRight == base[2] + right && paddingBottom == base[3] + bottom) {
+            return false
         }
+        updatePadding(left = base[0] + left, top = base[1] + top, right = base[2] + right, bottom = base[3] + bottom)
+        return true
     }
 
-    // Posted, not done in the listener: a layout request made while this view is being laid out
-    // is dropped, so the children would keep the padding they were just laid out with. Padding
-    // moves the content, not the view, so once applied the next pass finds nothing to change.
-    addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> post { apply() } }
-    ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
-        post { apply() } // the insets arrive before the layout they change
+    // Applied just before a frame is drawn, after the layout that places the view: not in the
+    // layout itself, where the request the new padding makes would be dropped, and not posted,
+    // which would draw a frame unpadded first. A change skips that frame and lays out again with
+    // it; padding moves the content, not the view, so the next look finds nothing to change.
+    var stale = true
+    addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> stale = true }
+    ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+        stale = true
+        view.invalidate()
         insets
+    }
+    viewTreeObserver.addOnPreDrawListener {
+        if (!stale) return@addOnPreDrawListener true
+        stale = false
+        !apply()
     }
 }

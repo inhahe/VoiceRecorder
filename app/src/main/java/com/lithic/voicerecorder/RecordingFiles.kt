@@ -71,17 +71,20 @@ object RecordingFiles {
         false
     }
 
+    /** What a recording is called between the two steps of a change of case. Not audio, so not listed; not hidden, so not lost. */
+    private const val STEP_SUFFIX = ".renaming"
+
     /**
      * Renames [file] to [target] (from [renameTarget]); true once the folder lists it under the
      * new name. A change of case alone goes through a temporary name: on Android's shared storage,
      * which ignores case, renaming straight to the same name in another case succeeds and changes
-     * nothing.
+     * nothing. Should the app die between the two steps, [finishRenames] completes it.
      */
     fun rename(file: File, target: File): Boolean {
         val dir = file.parentFile ?: return false
         if (target.name.equals(file.name, ignoreCase = true)) {
-            val step = File(dir, ".renaming-" + System.nanoTime() + "-" + target.name)
-            if (!file.renameTo(step)) return false
+            val step = File(dir, target.name + STEP_SUFFIX)
+            if (step.exists() || !file.renameTo(step)) return false
             if (!step.renameTo(target)) {
                 step.renameTo(file) // back as it was
                 return false
@@ -92,19 +95,35 @@ object RecordingFiles {
         return dir.list()?.contains(target.name) == true
     }
 
+    /** Completes a change of case cut short between its two steps (see [rename]): run before listing [dir]. */
+    fun finishRenames(dir: File) {
+        for (step in dir.listFiles() ?: return) {
+            if (!step.name.endsWith(STEP_SUFFIX)) continue
+            val target = File(dir, step.name.removeSuffix(STEP_SUFFIX))
+            if (!target.exists()) step.renameTo(target)
+        }
+    }
+
     /**
      * The length of a WAV in milliseconds, from its header ([WavLayout]: a take cut off before it
      * finished counts to the end of the file); null if it isn't a PCM WAV this can read.
      */
     fun wavDurationMs(file: File): Long? = WavLayout.read(file)?.durationMs
 
-    /** A length as the list and the player show it: m:ss, or h:mm:ss from an hour. */
-    fun clock(ms: Long): String {
+    /**
+     * A length as it is shown: m:ss, or h:mm:ss from an hour. [padMinutes] gives mm:ss below an
+     * hour, as the recording timer shows it, where the digits shouldn't jump at ten minutes.
+     */
+    fun clock(ms: Long, padMinutes: Boolean = false): String {
         val total = ms.coerceAtLeast(0) / 1000
         val h = total / 3600
         val m = total / 60 % 60
         val s = total % 60
-        return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s) else String.format(Locale.US, "%d:%02d", m, s)
+        return when {
+            h > 0 -> String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+            padMinutes -> String.format(Locale.US, "%02d:%02d", m, s)
+            else -> String.format(Locale.US, "%d:%02d", m, s)
+        }
     }
 
     /** The MIME type a share names for [file], so the receiving app knows it is audio of that kind. */

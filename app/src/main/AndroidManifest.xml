@@ -54,7 +54,6 @@
         <activity
             android:name=".RecordingsActivity"
             android:exported="false"
-            android:launchMode="singleTop"
             android:parentActivityName=".MainActivity" />
 
         <!-- Hands a recording to the app chosen in Share, without making the file world-readable. -->

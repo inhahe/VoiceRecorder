@@ -32,12 +32,14 @@ interface AudioOutput {
  *
  * @param newOutput makes the output for each recording opened.
  * @param requestFocus asks to play aloud now (audio focus); false (a call under way, say) and it doesn't start.
+ * @param focusRefused what [notice] says then.
  * @param abandonFocus says it has stopped playing aloud.
  * @param onChange called after anything shown changed: the recording, playing or not, the length, an error.
  */
 class PlayerController(
     private val newOutput: () -> AudioOutput,
     private val requestFocus: () -> Boolean = { true },
+    private val focusRefused: String = "Another app is using the sound",
     private val abandonFocus: () -> Unit = {},
     private val onChange: () -> Unit = {},
 ) {
@@ -58,6 +60,10 @@ class PlayerController(
 
     /** Why the recording couldn't be played, or null. */
     var error: String? = null
+        private set
+
+    /** Why Play did nothing just now (another app has the sound), or null. Cleared once it plays. */
+    var notice: String? = null
         private set
 
     private var output: AudioOutput? = null
@@ -145,11 +151,13 @@ class PlayerController(
 
     private fun start(out: AudioOutput) {
         if (!requestFocus()) {
+            notice = focusRefused
             onChange()
             return
         }
         out.start()
         isPlaying = true
+        notice = null
         onChange()
     }
 

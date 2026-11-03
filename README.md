@@ -92,7 +92,8 @@ built-in directory navigator.
   renames it (the extension is kept, and nothing is ever overwritten) or deletes it, after asking,
   since Android keeps no recycle bin for it. The "Saved" message after a recording has a **Play**
   button that opens it there. Playing pauses when you leave the screen, when a call or another app
-  takes the sound, and when headphones are unplugged; turning the phone doesn't interrupt it. The
+  takes the sound (and says so if one has it when you press Play), and when headphones are
+  unplugged; turning the phone doesn't interrupt it. The
   recording being made shows as "Recording…" and can't be played, renamed or deleted until it is
   finished, and playing another one aloud meanwhile asks first unless headphones are plugged in,
   since the microphone would record it into the take. A WAV cut off by the app being killed shows its real length and plays, though Android's
