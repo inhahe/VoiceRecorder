@@ -1,0 +1,1 @@
+"Stay paused" now really keeps a recording paused: plugging the microphone back in no longer resumes it behind your back. Press Resume when you're ready.

@@ -161,8 +161,11 @@ where a recording can begin or carry on.
   a `pausedForInput` one, so the prompt appears and plugging the device back in finishes the resume
   the user asked for.
 - **The mid-recording prompt mirrors the service.** "Input disconnected" is up exactly while
-  `pausedForInput` is set, unless the user chose "Stay paused", and it is raised again on every
-  rebind. That rebind is how a loss that happened with the screen off reaches the user. Until then,
+  `pausedForInput` is set, unless the user put it away, and it is raised again on every rebind.
+  "Stay paused" calls `holdPause()`, which turns the pause into the user's own: the input coming
+  back no longer resumes the recording (it may have been plugged in for something else), only
+  Resume does, as with any pause the user made. Back or a tap outside only hides the prompt; the
+  recording still resumes when the input returns. That rebind is how a loss that happened with the screen off reaches the user. Until then,
   the ongoing notification reads "Paused: input disconnected". `onInputPauseChanged` tells a visible
   Activity whenever the service pauses or resumes on its own.
 - **Automatic is exempt by definition.** It means "whatever Android picks", so unplugging a USB mic

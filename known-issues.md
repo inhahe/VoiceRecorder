@@ -225,7 +225,8 @@ broadcast in place of the device callback. Verified:
   - Losing the input pauses at once: "Paused — input disconnected", the timer frozen, and the
     notification reads "Paused: input disconnected".
   - Restoring the input resumes by itself, with "Recording resumed — Phone microphone".
-  - "Stay paused" holds the pause.
+  - "Stay paused" holds the pause. (Since 0.13.9 it also survives the input coming back; that was
+    built after this check and isn't verified on a device yet.)
   - Resume while the input is still missing asks again rather than resuming.
   - Choosing Automatic from the prompt resumes.
   - A pause the *user* made survived an unplug and a replug untouched.

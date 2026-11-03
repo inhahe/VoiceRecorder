@@ -51,7 +51,8 @@ built-in directory navigator.
   Input row turns red while the input is missing. If the input is unplugged *during* a recording,
   the recording **pauses**, so the file gets a gap rather than a stretch from the wrong mic, and the
   app asks again. It resumes on its own when you plug the input back in or choose another. A pause
-  you made yourself is never resumed for you. With the screen off, the notification reads *"Paused:
+  you made yourself is never resumed for you, and **Stay paused** in the prompt makes the pause
+  yours: plugging the input back in then leaves it paused until you press Resume. With the screen off, the notification reads *"Paused:
   input disconnected"*. **Automatic** is the exception: it means "whatever Android picks", so it
   still uses the phone's mic when nothing else is attached.
 - **An error doesn't cost the whole recording:** if capture fails partway (the mic stops

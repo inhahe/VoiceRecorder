@@ -211,7 +211,8 @@ class MainActivity : AppCompatActivity() {
      * - [DURING_RECORDING]: mirrors [RecordingService.pausedForInput]. The input went
      *   mid-recording and the service paused. Choosing an input resumes, because the service
      *   resumes by itself once the selection is one it can record from, and so does plugging the
-     *   input back in. "Stay paused" leaves it paused.
+     *   input back in. "Stay paused" makes the pause the user's ([RecordingService.holdPause]), so
+     *   plugging the input back in no longer resumes; back or a tap outside only hides the prompt.
      */
     private enum class InputPrompt { BEFORE_RECORDING, DURING_RECORDING }
 
@@ -314,7 +315,11 @@ class MainActivity : AppCompatActivity() {
             .setSingleChoiceItems(labels.toTypedArray(), -1) { _, which ->
                 onInputPromptChoice(keys[which])
             }
-            .setNegativeButton(if (before) R.string.cancel else R.string.stay_paused, null)
+            .setNegativeButton(if (before) R.string.cancel else R.string.stay_paused) { _, _ ->
+                // "Stay paused" makes the pause the user's: the input coming back won't resume it.
+                // Back or a tap outside only puts the prompt away; the recording still waits.
+                if (!before) service?.holdPause()
+            }
             .create()
         dialog.setOnDismissListener {
             if (inputPrompt !== dialog) return@setOnDismissListener // replaced, or closed by us

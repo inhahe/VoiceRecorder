@@ -215,6 +215,17 @@ class RecordingService : Service() {
     }
 
     /**
+     * Makes a pause that is waiting for the input ([pausedForInput]) the user's own, as "Stay
+     * paused" asks: the input coming back no longer resumes the recording (it may have been plugged
+     * in for something else, or the user wants the break), only Resume does. No-op otherwise.
+     */
+    fun holdPause() {
+        if (!isRecording || !pausedForInput) return
+        pausedForInput = false
+        updateNotification()
+    }
+
+    /**
      * Resumes capture after a pause. Returns false, and stays paused, when the chosen input isn't
      * attached, since resuming would record from the phone's mic instead. The pause then becomes
      * one that waits for the input ([pausedForInput]): the UI asks for another input, and plugging
