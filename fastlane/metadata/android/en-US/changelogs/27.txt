@@ -1,0 +1,1 @@
+After "Stay paused" the screen says the recording is paused rather than waiting for the input. M4A and Opus recordings no longer make capture wait on the encoder, so a busy phone can't drop audio. The frequency meter updates with every frame of the screen.

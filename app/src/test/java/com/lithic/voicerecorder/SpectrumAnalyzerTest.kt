@@ -137,7 +137,7 @@ class SpectrumAnalyzerTest {
     /** How fast the bars fall doesn't depend on how the audio is cut up. */
     @Test
     fun barsFallAtTheSameSpeedWhateverTheBufferSize() {
-        val hop = sampleRate / SpectrumAnalyzer.UPDATES_PER_SECOND
+        val hop = SpectrumAnalyzer.hopFor(sampleRate)
         fun afterSilence(chunkFrames: Int): Float {
             val analyzer = SpectrumAnalyzer()
             pushInChunks(analyzer, sinePcm(3000.0, sampleRate / 2), chunkFrames)
@@ -238,7 +238,7 @@ class SpectrumAnalyzerTest {
     @Test
     fun aLaterLowerRiseOutlivesAnOlderHigherOne() {
         val analyzer = SpectrumAnalyzer()
-        val hop = sampleRate / SpectrumAnalyzer.UPDATES_PER_SECOND
+        val hop = SpectrumAnalyzer.hopFor(sampleRate)
         fun push(pcm: ByteArray) = analyzer.push(pcm, pcm.size, channels = 1, sampleRate = sampleRate)
         push(sinePcm(3000.0, 4 * hop))                 // loud
         push(ByteArray(12 * hop * 2))                  // falls below what the quieter sound reads
@@ -314,7 +314,7 @@ class SpectrumAnalyzerTest {
     fun windowsOverlapAtEveryRate() {
         for (rate in AudioFormatSpec.SAMPLE_RATES) {
             val window = SpectrumAnalyzer.windowLengthFor(rate)
-            val hop = rate / SpectrumAnalyzer.UPDATES_PER_SECOND
+            val hop = SpectrumAnalyzer.hopFor(rate)
             assertTrue("$rate Hz: a $window-frame window for a $hop-frame hop", window >= 2 * hop)
             // And the analyzer takes the rate (it checks the same itself) and analyses at it.
             val analyzer = SpectrumAnalyzer()

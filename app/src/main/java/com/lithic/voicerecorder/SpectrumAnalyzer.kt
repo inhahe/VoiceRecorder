@@ -29,7 +29,7 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
     /** Everything that depends on the sample rate, built once per rate and replaced whole. */
     private class Geometry(val sampleRate: Int, bandCount: Int) {
         /** Frames between analyses. */
-        val hop = sampleRate / UPDATES_PER_SECOND
+        val hop = hopFor(sampleRate)
 
         /** Frames each analysis looks at: [WINDOW_SECONDS] at [sampleRate]. */
         val windowLength = windowLengthFor(sampleRate)
@@ -52,50 +52,6 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
         val im = FloatArray(fftSize)
     }
 
-    /**
-     * One band's rises since the last read, kept only while each could still be the highest of the
-     * last [RISE_HOLD] analyses: oldest first, values falling. A sliding-window maximum, so a lower
-     * rise behind a higher one isn't lost when the higher one ages out before the read.
-     */
-    private class Rises {
-        private val value = FloatArray(RISE_HOLD + 1)
-        private val at = LongArray(RISE_HOLD + 1)
-        private var first = 0
-        private var count = 0
-
-        /** The band rose to [v] in analysis [analysis]. */
-        fun add(v: Float, analysis: Long) {
-            expire(analysis)
-            while (count > 0 && value[slot(count - 1)] <= v) count--
-            // Room: what is left is younger than RISE_HOLD analyses, one rise per analysis at most.
-            val s = slot(count)
-            value[s] = v
-            at[s] = analysis
-            count++
-        }
-
-        /** The highest rise of the last [RISE_HOLD] analyses as of analysis [now], or 0; then none are left. */
-        fun take(now: Long): Float {
-            expire(now)
-            val highest = if (count > 0) value[first] else 0f
-            count = 0
-            return highest
-        }
-
-        fun clear() {
-            count = 0
-        }
-
-        private fun expire(now: Long) {
-            while (count > 0 && now - at[first] >= RISE_HOLD) {
-                first = (first + 1) % value.size
-                count--
-            }
-        }
-
-        private fun slot(k: Int) = (first + k) % value.size
-    }
-
     private var geometry: Geometry? = null
     private var ringPos = 0
     private var sinceLastFft = 0
@@ -108,8 +64,15 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
     /** The bars as of the latest analysis. Guarded by [lock]. */
     private val smoothed = FloatArray(bandCount)
 
-    /** Each band's rises since the last [takeBands]. Guarded by [lock]. */
-    private val rises = Array(bandCount) { Rises() }
+    /**
+     * What each band rose to in each of the last [RISE_HOLD] analyses (0 where it didn't rise),
+     * analysis `a` at `a % RISE_HOLD`: every analysis writes its slot, so the slots hold exactly
+     * the last [RISE_HOLD]. Guarded by [lock].
+     */
+    private val recentRises = Array(bandCount) { FloatArray(RISE_HOLD) }
+
+    /** [analyses] when [takeBands] last ran: the rises up to then have been shown. Guarded by [lock]. */
+    private var takenAt = 0L
 
     /** Analyses run since the last [reset]. Guarded by [lock] (the tests read it on the one thread). */
     internal var analyses = 0L
@@ -173,6 +136,7 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
         // A few dozen multiplications: cheap enough to hold the reader off for.
         synchronized(lock) {
             analyses++
+            val slot = (analyses % RISE_HOLD).toInt()
             for (b in 0 until bandCount) {
                 // Fast attack, slow decay for a lively-but-readable meter. Never below the current
                 // reading: a steady tone that reads a hair lower than last time must not drop the
@@ -181,7 +145,7 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
                 val before = smoothed[b]
                 val held = before * DECAY
                 smoothed[b] = if (readings[b].isNaN()) held else max(readings[b], held)
-                if (smoothed[b] > before) rises[b].add(smoothed[b], analyses)
+                recentRises[b][slot] = if (smoothed[b] > before) smoothed[b] else 0f
             }
         }
     }
@@ -196,7 +160,15 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
      * otherwise take the other's rises.
      */
     fun takeBands(): FloatArray = synchronized(lock) {
-        FloatArray(bandCount) { b -> max(smoothed[b], rises[b].take(analyses)) }
+        // The analyses since the previous call, as far as the last RISE_HOLD of them reach.
+        val from = max(takenAt, analyses - RISE_HOLD) + 1
+        val bands = FloatArray(bandCount) { b ->
+            var shown = smoothed[b]
+            for (a in from..analyses) shown = max(shown, recentRises[b][(a % RISE_HOLD).toInt()])
+            shown
+        }
+        takenAt = analyses
+        bands
     }
 
     /** Clear the meter. Call it from the thread that pushes, or once that thread has stopped. */
@@ -209,8 +181,9 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
         sinceLastFft = 0
         synchronized(lock) {
             analyses = 0
+            takenAt = 0
             smoothed.fill(0f)
-            for (r in rises) r.clear()
+            for (r in recentRises) r.fill(0f)
         }
     }
 
@@ -229,6 +202,9 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
         private const val RISE_HOLD = UPDATES_PER_SECOND / 2
 
         internal fun windowLengthFor(rate: Int): Int = (rate * WINDOW_SECONDS).roundToInt()
+
+        /** Frames between analyses at [rate]: 1/[UPDATES_PER_SECOND] s. What the capture loop reads at a time, too. */
+        internal fun hopFor(rate: Int): Int = max(1, rate / UPDATES_PER_SECOND)
 
         private fun nextPowerOfTwo(n: Int): Int {
             var p = 1

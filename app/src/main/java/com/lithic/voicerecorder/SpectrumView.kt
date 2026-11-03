@@ -14,9 +14,8 @@ import androidx.core.content.ContextCompat
 /**
  * A small live frequency-spectrum meter drawn as vertical bars, shown only while recording.
  *
- * The recorder pushes fresh band magnitudes via [submitBands]; the view raises the drawn bars to
- * those targets at once and eases them down, re-invalidating itself while [active], so the meter
- * falls smoothly between the (coarser) magnitude updates.
+ * While [active] it reads the band magnitudes from [source] on every frame, raises the drawn bars
+ * to them at once and eases them down, so the meter falls smoothly between the analyzer's updates.
  */
 class SpectrumView @JvmOverloads constructor(
     context: Context,
@@ -36,14 +35,21 @@ class SpectrumView @JvmOverloads constructor(
     private val accentColor = ContextCompat.getColor(context, R.color.accent)
     private val topColor = ContextCompat.getColor(context, R.color.primary)
 
-    /** Provide the latest 0..1 band magnitudes (copied defensively). */
-    fun submitBands(bands: FloatArray) {
+    /**
+     * Where the 0..1 band magnitudes come from, read on every frame while [active]: as often as the
+     * screen can show a change, rather than on a timer of its own that would gather the analyses
+     * between two ticks into one step. Null, or an empty array, while there is nothing to read.
+     */
+    var source: (() -> FloatArray?)? = null
+
+    private fun pull() {
+        val bands = source?.invoke() ?: return
+        if (bands.isEmpty()) return
         if (targets.size != bands.size) {
             targets = FloatArray(bands.size)
             display = FloatArray(bands.size)
         }
         System.arraycopy(bands, 0, targets, 0, bands.size)
-        if (active) postInvalidateOnAnimation()
     }
 
     /** Show/animate the meter, or hide and reset it. */
@@ -71,6 +77,7 @@ class SpectrumView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        if (active) pull()
         val n = display.size
         if (n == 0) return
 
@@ -97,7 +104,7 @@ class SpectrumView @JvmOverloads constructor(
             canvas.drawRoundRect(rect, radius, radius, barPaint)
         }
 
-        if (active && animating) postInvalidateOnAnimation()
+        if (active) postInvalidateOnAnimation() // the next frame reads the source again
     }
 
     companion object {

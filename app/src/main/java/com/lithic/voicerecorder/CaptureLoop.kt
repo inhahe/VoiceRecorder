@@ -56,7 +56,7 @@ internal class CaptureLoop(
          */
         fun readBytes(sampleRate: Int, channels: Int, bufferBytes: Int): Int {
             val frameBytes = 2 * channels
-            val hop = max(1, sampleRate / SpectrumAnalyzer.UPDATES_PER_SECOND) * frameBytes
+            val hop = SpectrumAnalyzer.hopFor(sampleRate) * frameBytes
             return max(frameBytes, min(hop, bufferBytes / frameBytes * frameBytes))
         }
     }

@@ -20,10 +20,13 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
 
 - **One capture engine.** `PcmRecorder` owns the single `AudioRecord` and tees PCM to both the
   encoder and the analyzer, so the spectrum works for every format (no `MediaRecorder` path).
-  It reads a spectrum hop at a time (20 ms, `CaptureLoop.readBytes`) from an `AudioRecord` buffer
-  of twice the device's minimum: reading the whole buffer at once (160 ms on some phones) handed
-  the meter its analyses in bursts, so it moved in steps. `AudioRecord` keeps the whole buffer
-  either way, so a late read loses nothing, and both encoders take chunks of any size.
+  It reads a spectrum hop at a time (20 ms, `SpectrumAnalyzer.hopFor`, through
+  `CaptureLoop.readBytes`) from an `AudioRecord` buffer of twice the device's minimum: reading the
+  whole buffer at once (160 ms on some phones) handed the meter its analyses in bursts, so it moved
+  in steps. `AudioRecord` keeps the whole buffer either way, so a late read loses nothing, and both
+  encoders take chunks of any size. The MediaCodec encoder takes only what output is ready while
+  recording, never waiting for more: a wait per 20 ms read (it was 10 ms) would hold the capture
+  thread up for half its time, and a thread that late lets `AudioRecord`'s buffer overflow.
 - **The analyzer belongs to the capture thread,** which pushes to it and also clears it when it
   sees a pause (`CaptureLoop`, the loop apart from `AudioRecord`, so that is tested on the JVM);
   only `takeBands` is called elsewhere. Cleared from the main thread, a buffer the capture thread
@@ -33,18 +36,17 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
   second of audio, at fixed points in it (inside a buffer when the buffer is longer); each analysis
   looks at a fixed length of time (`WINDOW_SECONDS`, 2048 frames at 48 kHz, zero-padded to a power
   of two for the FFT), at least two hops long, so consecutive Hann windows overlap by half and no
-  sound slips between them; and the screen's 50 ms poll (`takeSpectrum`) gets the latest analysis,
-  but no lower than the highest each band rose to since the previous poll. A rise is what a poll
-  between bursts of analyses would miss (a long buffer's analyses all land at once, a click among
-  the first has decayed by the last); a fall it can't miss, so a falling bar shows where it is now
-  rather than at the burst's oldest analysis. Only rises of the last half second count (a
-  sliding-window maximum per band, so a lower rise behind a higher one survives the higher one
-  ageing out), so the screen coming back on doesn't flash a sound long past. `SpectrumView` then
-  raises a bar at once and eases it down, so a click that lasts one poll is drawn at its full
-  height rather than eased towards it. After a reset the window starts as
-  silence and the analyses run on the usual grid from the first hop, so the first moments after
-  Record or Resume count as much as any. The rate comes with every `push`, and a new one starts
-  the meter afresh.
+  sound slips between them; and `SpectrumView`, reading `takeSpectrum` on every frame, gets the
+  latest analysis, but no lower than the highest each band rose to since the previous read. A
+  rise is what a read between analyses would miss (several can land between two frames, a click
+  among the first decayed by the last); a fall it can't miss, so a falling bar shows where it is
+  now rather than at the oldest of them. Only rises of the last half second count (each band
+  keeps its rise per analysis in a ring of the last half second's, so a lower rise behind a higher
+  one survives the higher one ageing out), so the screen coming back on doesn't flash a sound long
+  past. The view raises a bar at once and eases it down, so a click is drawn at its full height
+  rather than eased towards it. After a reset the window starts as silence and the analyses run on
+  the usual grid from the first hop, so the first moments after Record or Resume count as much as
+  any. The rate comes with every `push`, and a new one starts the meter afresh.
 - **Service owns the recording, Activity owns the UI.** The Activity can die/rebind; recording state
   lives in the foreground service and the UI re-derives itself in `refreshUi()`.
 - **Settings is the only persistence.** No database; everything is SharedPreferences-backed
@@ -166,12 +168,14 @@ where a recording can begin or carry on.
   the user asked for.
 - **The mid-recording prompt mirrors the service.** "Input disconnected" is up exactly while
   `pausedForInput` is set, unless the user put it away, and it is raised again on every rebind.
-  "Stay paused" calls `holdPause()`, which turns the pause into the user's own: the input coming
-  back no longer resumes the recording (it may have been plugged in for something else), only
-  Resume does, as with any pause the user made. Back or a tap outside only hides the prompt; the
-  recording still resumes when the input returns. That rebind is how a loss that happened with the screen off reaches the user. Until then,
-  the ongoing notification reads "Paused: input disconnected". `onInputPauseChanged` tells a visible
+  That rebind is how a loss that happened with the screen off reaches the user. Until then, the
+  ongoing notification reads "Paused: input disconnected". `onInputPauseChanged` tells a visible
   Activity whenever the service pauses or resumes on its own.
+- **"Stay paused" makes the pause the user's.** It calls `holdPause()`: the input coming back no
+  longer resumes the recording (it may have been plugged in for something else), only Resume
+  does, as with any pause the user made, and the notification and status line say "paused" rather
+  than that the input is missing. Back or a tap outside only hides the prompt; the recording still
+  resumes when the input returns.
 - **Automatic is exempt by definition.** It means "whatever Android picks", so unplugging a USB mic
   under Automatic still lands on the phone's mic, as it always did.
 

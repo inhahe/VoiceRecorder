@@ -227,10 +227,6 @@ broadcast in place of the device callback. Verified:
   - Restoring the input resumes by itself, with "Recording resumed — Phone microphone".
   - "Stay paused" holds the pause. (Since 0.13.9 it also survives the input coming back; that was
     built after this check and isn't verified on a device yet: an emulator can't plug a mic in.)
-- **20 ms reads (0.13.10):** on an API 36 emulator recording from the host's microphone, a WAV take
-  with a pause in it came out at exactly the timer's length (17.04 s, pause excluded) and an M4A
-  take decoded cleanly; not yet tried on a phone with long buffers, where the smoother meter
-  would show.
   - Resume while the input is still missing asks again rather than resuming.
   - Choosing Automatic from the prompt resumes.
   - A pause the *user* made survived an unplug and a replug untouched.
@@ -241,6 +237,25 @@ broadcast in place of the device callback. Verified:
 - **Not covered:** a real USB mic being unplugged. Neither the real `AudioDeviceCallback` timing nor
   the phone-mic window described in *An unplugged input can leave a moment of phone-mic audio* has
   been observed.
+
+### 20 ms reads — emulator (API 36), recording the host's microphone, v0.13.10–0.13.11
+Each take was timed from the host, between the taps on Start recording and Stop, and its file
+measured with ffprobe. A file shorter than its time would mean audio lost to an overflowing
+`AudioRecord` buffer.
+
+| Take | Between the taps | File | Decodes |
+|---|---|---|---|
+| M4A 44.1 kHz | 30.46 s | 30.35 s | cleanly |
+| M4A 48 kHz | 15.34 s | 15.22 s | cleanly |
+| Opus 48 kHz | 30.57 s | 30.44 s | cleanly |
+| WAV 48 kHz | 30.72 s | 30.60 s | cleanly |
+| WAV 48 kHz | 15.47 s | 15.10 s | cleanly |
+| WAV 48 kHz, with a pause (0.13.10) | — | 17.04 s, exactly the timer | cleanly |
+
+The 0.1–0.4 s shortfall doesn't grow with the length, so it is the time capture takes to start,
+not lost audio. During a take the spectrum is read on every frame and reacts (the host's room was
+quiet, so only a band or two rose). Not yet tried on a phone with long buffers, where the
+smoother meter would show.
 
 ### On real hardware — Galaxy S22 Ultra (SM-S908U, Android 16), v0.12.2
 Sample-rate work verified on-device, files pulled and headers parsed:

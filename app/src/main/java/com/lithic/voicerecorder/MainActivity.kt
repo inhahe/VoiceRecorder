@@ -40,7 +40,6 @@ class MainActivity : AppCompatActivity() {
     private val timerTick = object : Runnable {
         override fun run() {
             updateTimer()
-            updateSpectrum()
             updateClipIndicator()
             // Routing rarely changes and each read is a native call, so poll it once a second
             // rather than on every 50 ms frame.
@@ -98,6 +97,8 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         binding.root.padBelowActionBar()
+        // Read on every frame while recording; the service is whichever is bound at the time.
+        binding.spectrumView.source = { service?.takeSpectrum() }
         settings = Settings(this)
         inputValueColors = binding.inputValue.textColors
 
@@ -318,7 +319,10 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton(if (before) R.string.cancel else R.string.stay_paused) { _, _ ->
                 // "Stay paused" makes the pause the user's: the input coming back won't resume it.
                 // Back or a tap outside only puts the prompt away; the recording still waits.
-                if (!before) service?.holdPause()
+                if (!before) {
+                    service?.holdPause()
+                    refreshUi() // the status line no longer says the input is what it waits for
+                }
             }
             .create()
         dialog.setOnDismissListener {
@@ -677,11 +681,6 @@ class MainActivity : AppCompatActivity() {
     private fun audioManager(): AudioManager =
         getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    private fun updateSpectrum() {
-        if (service?.isRecording == true) {
-            binding.spectrumView.submitBands(service?.takeSpectrum() ?: FloatArray(0))
-        }
-    }
 
     private fun updateTimer() {
         val ms = service?.elapsedMillis() ?: 0L
