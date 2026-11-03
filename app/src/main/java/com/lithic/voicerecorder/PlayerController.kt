@@ -3,7 +3,7 @@ package com.lithic.voicerecorder
 import java.io.File
 
 /**
- * What plays one file: [MediaPlayerOutput] on a phone, a fake in the tests. Every callback arrives
+ * What plays one file: [DecodingOutput] on a phone, a fake in the tests. Every callback arrives
  * on the main thread, after the call that caused it has returned.
  */
 interface AudioOutput {
@@ -23,6 +23,9 @@ interface AudioOutput {
 
     /** Lets go of the file and everything else; nothing is called back after. */
     fun release()
+
+    /** The spectrum of what is being heard, into [out]; whether anything new came (see [SpectrumAnalyzer.takeBandsInto]). */
+    fun takeSpectrum(out: FloatArray): Boolean = false
 }
 
 /**
@@ -182,6 +185,9 @@ class PlayerController(
         out.seekTo(to)
         ended = false
     }
+
+    /** The spectrum of what is being heard while it plays; nothing new while paused, so the bars settle. */
+    fun takeSpectrum(out: FloatArray): Boolean = isPlaying && output?.takeSpectrum(out) == true
 
     /** Back to the start, paused. */
     fun stop() {

@@ -100,6 +100,7 @@ class RecordingsActivity : AppCompatActivity() {
         title = getString(R.string.recordings)
         settings = Settings(this)
         model.onChange = ::onPlayerChanged
+        binding.playerSpectrum.source = { out -> player.takeSpectrum(out) }
 
         binding.recordingsList.layoutManager = LinearLayoutManager(this)
         binding.recordingsList.adapter = adapter
@@ -307,7 +308,7 @@ class RecordingsActivity : AppCompatActivity() {
     private fun headphonesAttached(): Boolean {
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val types = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            audio.getAudioDevicesForAttributes(MediaPlayerOutput.ATTRIBUTES).map { it.type }
+            audio.getAudioDevicesForAttributes(DecodingOutput.ATTRIBUTES).map { it.type }
         } else {
             audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.type }
         }
@@ -431,6 +432,7 @@ class RecordingsActivity : AppCompatActivity() {
         // would stay frozen for every recording played after.
         if (!seekable) scrubbing = false
         binding.positionBar.isEnabled = seekable
+        binding.playerSpectrum.setActive(file != null && player.error == null)
         binding.positionBar.max = player.durationMs.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
         showPosition()
         main.removeCallbacks(tick)
@@ -570,7 +572,7 @@ class RecordingsModel(app: Application) : AndroidViewModel(app) {
     private val audioManager = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val focusRequest: AudioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-        .setAudioAttributes(MediaPlayerOutput.ATTRIBUTES)
+        .setAudioAttributes(DecodingOutput.ATTRIBUTES)
         .setOnAudioFocusChangeListener { change ->
             // Another app's sound (a call, navigation): this is a recording being checked, not
             // music to duck under it, so it pauses, and the user resumes it.
@@ -583,7 +585,7 @@ class RecordingsModel(app: Application) : AndroidViewModel(app) {
         .build()
 
     val player: PlayerController = PlayerController(
-        newOutput = { MediaPlayerOutput(app) },
+        newOutput = { DecodingOutput(app) },
         requestFocus = { audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED },
         focusRefused = app.getString(R.string.player_focus_refused),
         abandonFocus = { audioManager.abandonAudioFocusRequest(focusRequest) },

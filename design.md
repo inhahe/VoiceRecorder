@@ -14,7 +14,7 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
      │                        └─> SpectrumAnalyzer ──> SpectrumView (via MainActivity poll)
      ├─ PreRecordDialog        (name + per-recording format overrides)
      ├─ RecordingsActivity     (the save folder's recordings + the player)
-     │      └─> RecordingsModel ──> PlayerController ──> MediaPlayerOutput (AudioOutput)
+     │      └─> RecordingsModel ──> PlayerController ──> DecodingOutput (AudioOutput) ──> PlaybackMeterQueue
      ├─ DirectoryPickerDialog  (save folder)
      └─ SettingsActivity       (defaults)
                     all persisted state ──> Settings (SharedPreferences)
@@ -380,7 +380,7 @@ the screen is started.
   `PlayerController`'s play-when-ready, and the play button shows "pause" for one about to play),
   and "Play" from the "Saved" message waits for the screen to be started, and survives its
   recreation.
-- **The rules are on the JVM.** `PlayerController` drives an `AudioOutput` (MediaPlayer on a
+- **The rules are on the JVM.** `PlayerController` drives an `AudioOutput` (`DecodingOutput` on a
   phone, a fake in `PlayerControllerTest`): play once open, pause and resume, the end showing the
   full length with Play starting again from the beginning, an error kept with the file still named
   so Play tries again, a seek kept within the recording. It makes an output per recording and
@@ -391,11 +391,11 @@ the screen is started.
   Refused focus (a call under way) leaves it paused and says so in the player bar
   (`PlayerController.notice`), rather than Play doing nothing. Headphones unplugged
   (`ACTION_AUDIO_BECOMING_NOISY`) pause it before the speaker takes over. The player and its focus
-  request share one set of `AudioAttributes` (`MediaPlayerOutput.ATTRIBUTES`), since the system
+  request share one set of `AudioAttributes` (`DecodingOutput.ATTRIBUTES`), since the system
   decides from them how to treat the sound.
-- **Renaming and deleting.** `MediaPlayer` is given the file's descriptor and keeps its own
-  duplicate, so a rename doesn't interrupt playing, and `PlayerController.renamed` follows it. A
-  delete first lets go of the file (`release`). Renames keep the extension, refuse a name that
+- **Renaming and deleting.** The player opens the file by descriptor and keeps it open, so a
+  rename doesn't interrupt playing, and `PlayerController.renamed` follows it. A delete first lets
+  go of the file (`release`). Renames keep the extension, refuse a name that
   another file has (`Files.isSameFile`: on storage that ignores case, the new case of this file's
   own name is the same file) or that starts with a dot (the file would be hidden, and leave the
   list), and use the record dialog's character rules (`RecordingFiles.ILLEGAL_FILENAME_CHARS`,
@@ -415,9 +415,25 @@ the screen is started.
 - **Seeking.** A drag seeks when let go; a key or TalkBack's adjust action moves the bar without a
   drag and seeks at once. A bar disabled mid-drag never reports the drag's end, so disabling it
   ends the drag, or the position would stay frozen after.
-- **A cut-off WAV plays through a corrected header.** Android's `MediaPlayer` refuses a WAV whose
-  sizes are unknown ("damaged", measured on the API 36 emulator), so `MediaPlayerOutput` gives it
-  one through a `MediaDataSource` over a `WavView`: the file as it reads had the take finished,
+- **The player decodes the recording itself** (`DecodingOutput`): `MediaPlayer` plays a file but
+  never hands over its audio, and the spectrum needs it. `MediaExtractor` and `MediaCodec` decode,
+  asked for 16-bit PCM (a float or 8-bit decoder's output is converted), into an `AudioTrack`,
+  on a thread of its own that writes without blocking, so a pause, a seek or a release is seen
+  within a few milliseconds. A seek goes to the sync point before the target and drops what
+  decodes before it, then flushes the track, which starts afresh at the target. The end comes once
+  the track has played everything written, and the thread then waits for a seek back (Play again).
+  Mono and stereo are played; more channels say so.
+- **The spectrum during playback is what the track has played.** Each block written to the track
+  is queued (`PlaybackMeterQueue`) by the track frame it starts at, and analysed by the app's own
+  `SpectrumAnalyzer`, on the main thread, once the track's playback head has reached it, as the
+  player bar's `SpectrumView` reads it. So the bars move with what is heard: a pause holds them
+  (the head stops), a seek clears the queue with the track, and a change of output device needs
+  nothing, the head being the device's own count. Blocks played more than a quarter of a second
+  before a read (the screen was away) are dropped and the analyzer starts afresh. Paused, the
+  controller reports nothing new, so the bars settle.
+- **A cut-off WAV plays through a corrected header.** Android's extractor refuses a WAV whose
+  sizes are unknown (`MediaPlayer` called it "damaged", measured on the API 36 emulator), so it is
+  given one through a `MediaDataSource` over a `WavView`: the file as it reads had the take finished,
   its two sizes filled in and its end cut to the last whole frame. The view reads the file and
   overlays just the two size fields, so a large chunk before the data costs nothing. The file
   itself isn't changed.

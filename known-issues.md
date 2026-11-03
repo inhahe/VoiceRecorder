@@ -185,10 +185,8 @@ shows a system dialog of its own; the app reaches its files through "All files a
 any folder. A recording deleted by mistake can't be got back from the app.
 
 ## Not yet implemented (possible future work)
-- Meters during playback. The desktop app shows the spectrum and level of what is playing; here
-  the player is on its own screen, away from the meter, and `MediaPlayer` doesn't hand over the
-  audio it plays (the `Visualizer` effect does, coarsely, and needs the microphone permission,
-  which the app has). Playing through `MediaCodec` and `AudioTrack` would give the samples.
+- A level meter during playback: the player shows the spectrum of what is playing, but not the
+  level per channel the desktop app shows.
 - Playing on in the background (a media session and a notification), for long recordings.
 
 ## Verification status

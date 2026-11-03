@@ -73,6 +73,14 @@
                 android:textSize="13sp"
                 android:visibility="gone" />
 
+            <!-- What is being heard: shown while a recording is loaded, settling while paused. -->
+            <com.lithic.voicerecorder.SpectrumView
+                android:id="@+id/playerSpectrum"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:layout_marginTop="6dp"
+                android:visibility="gone" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

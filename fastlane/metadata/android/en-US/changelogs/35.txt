@@ -1,0 +1,1 @@
+The player shows the spectrum of what is playing, in step with what you hear. Recordings are now decoded by the app itself, which also plays WAV recordings cut off when the app was closed.

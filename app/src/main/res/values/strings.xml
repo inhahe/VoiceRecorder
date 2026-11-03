@@ -177,6 +177,8 @@
     <string name="recording_while_recording_title">A recording is being made</string>
     <string name="recording_while_recording_message">Played through the speaker now, %1$s would be recorded into it too. Plug in headphones to listen without that.</string>
     <string name="recording_play_anyway">Play anyway</string>
+    <string name="player_no_audio">it has no audio track</string>
+    <string name="player_channels">%1$d channels, and this player plays one or two</string>
     <string name="player_focus_refused">Another app is using the sound (a call, say): try again once it is done.</string>
     <string name="player_cant_play">Can\'t play %1$s: it is damaged, or in a format this phone doesn\'t play</string>
 </resources>
