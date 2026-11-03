@@ -115,7 +115,7 @@ class PcmRecorder(
         ar.startRecording()
 
         val loop = CaptureLoop(
-            buffer = ByteArray(bufferSize),
+            buffer = ByteArray(CaptureLoop.readBytes(spec.sampleRate, spec.channels, bufferSize)),
             read = { ar.read(it, 0, it.size) },
             deliver = { buffer, read ->
                 // Gain first, so the file, the meter and the clip warning all agree.

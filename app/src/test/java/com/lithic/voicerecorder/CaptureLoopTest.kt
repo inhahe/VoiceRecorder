@@ -54,6 +54,18 @@ class CaptureLoopTest {
         assertEquals(4L, loop.captured)
     }
 
+    /**
+     * Reads are a spectrum hop long (20 ms), so the meter's analyses arrive as the audio does, not
+     * a buffer's worth at once; whole frames, and never more than AudioRecord's own buffer.
+     */
+    @Test
+    fun readsAreAHopOfWholeFramesWithinTheBuffer() {
+        assertEquals(882 * 2, CaptureLoop.readBytes(44100, 1, 16384))   // 20 ms of mono
+        assertEquals(960 * 4, CaptureLoop.readBytes(48000, 2, 32768))   // 20 ms of stereo
+        assertEquals(1000 * 4, CaptureLoop.readBytes(96000, 2, 4002))   // capped by a small buffer, whole frames
+        assertEquals(4, CaptureLoop.readBytes(8000, 2, 2))              // never less than a frame
+    }
+
     /** A read that returns nothing is neither audio nor an error: the loop just reads again. */
     @Test
     fun aReadOfNothingIsSkipped() {

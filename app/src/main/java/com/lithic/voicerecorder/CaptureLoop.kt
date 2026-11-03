@@ -1,5 +1,8 @@
 package com.lithic.voicerecorder
 
+import kotlin.math.max
+import kotlin.math.min
+
 /**
  * The capture thread's loop, apart from `AudioRecord` and what is done with each buffer, so its
  * handling of pauses can be tested on the JVM.
@@ -39,6 +42,22 @@ internal class CaptureLoop(
             } else if (n < 0 && !isPaused()) {
                 throw IllegalStateException("AudioRecord.read error $n")
             }
+        }
+    }
+
+    companion object {
+        /**
+         * Bytes to ask `AudioRecord` for at a time: one spectrum hop (1/[SpectrumAnalyzer.UPDATES_PER_SECOND]
+         * s) of [channels]-channel 16-bit audio at [sampleRate], whole frames, and no more than
+         * [bufferBytes], the buffer `AudioRecord` was given. Reading a whole buffer at a time instead
+         * (160 ms on some phones) hands the meter a burst of analyses at once, so it moves in steps;
+         * a hop at a time, it moves as the audio arrives. `AudioRecord` keeps its whole buffer either
+         * way, so a late read loses nothing.
+         */
+        fun readBytes(sampleRate: Int, channels: Int, bufferBytes: Int): Int {
+            val frameBytes = 2 * channels
+            val hop = max(1, sampleRate / SpectrumAnalyzer.UPDATES_PER_SECOND) * frameBytes
+            return max(frameBytes, min(hop, bufferBytes / frameBytes * frameBytes))
         }
     }
 }

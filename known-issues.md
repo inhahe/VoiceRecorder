@@ -226,7 +226,11 @@ broadcast in place of the device callback. Verified:
     notification reads "Paused: input disconnected".
   - Restoring the input resumes by itself, with "Recording resumed — Phone microphone".
   - "Stay paused" holds the pause. (Since 0.13.9 it also survives the input coming back; that was
-    built after this check and isn't verified on a device yet.)
+    built after this check and isn't verified on a device yet: an emulator can't plug a mic in.)
+- **20 ms reads (0.13.10):** on an API 36 emulator recording from the host's microphone, a WAV take
+  with a pause in it came out at exactly the timer's length (17.04 s, pause excluded) and an M4A
+  take decoded cleanly; not yet tried on a phone with long buffers, where the smoother meter
+  would show.
   - Resume while the input is still missing asks again rather than resuming.
   - Choosing Automatic from the prompt resumes.
   - A pause the *user* made survived an unplug and a replug untouched.

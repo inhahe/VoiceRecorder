@@ -20,6 +20,10 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
 
 - **One capture engine.** `PcmRecorder` owns the single `AudioRecord` and tees PCM to both the
   encoder and the analyzer, so the spectrum works for every format (no `MediaRecorder` path).
+  It reads a spectrum hop at a time (20 ms, `CaptureLoop.readBytes`) from an `AudioRecord` buffer
+  of twice the device's minimum: reading the whole buffer at once (160 ms on some phones) handed
+  the meter its analyses in bursts, so it moved in steps. `AudioRecord` keeps the whole buffer
+  either way, so a late read loses nothing, and both encoders take chunks of any size.
 - **The analyzer belongs to the capture thread,** which pushes to it and also clears it when it
   sees a pause (`CaptureLoop`, the loop apart from `AudioRecord`, so that is tested on the JVM);
   only `takeBands` is called elsewhere. Cleared from the main thread, a buffer the capture thread
