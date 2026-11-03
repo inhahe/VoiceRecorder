@@ -14,7 +14,8 @@ import androidx.core.content.ContextCompat
 import kotlin.math.abs
 
 /**
- * A small live frequency-spectrum meter drawn as vertical bars, shown only while recording.
+ * A small live frequency-spectrum meter drawn as vertical bars: of what is being recorded, on the
+ * main screen, and of what is being played, in the player bar.
  *
  * While [active] and visible it reads the band magnitudes from [source] on every frame, raises the
  * drawn bars to them at once and eases them down, so the meter falls smoothly between the

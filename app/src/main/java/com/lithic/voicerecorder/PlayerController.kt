@@ -3,7 +3,7 @@ package com.lithic.voicerecorder
 import java.io.File
 
 /**
- * What plays one file: [DecodingOutput] on a phone, a fake in the tests. Every callback arrives
+ * What plays one file: [ExoOutput] on a phone, a fake in the tests. Every callback arrives
  * on the main thread, after the call that caused it has returned.
  */
 interface AudioOutput {
@@ -87,7 +87,7 @@ class PlayerController(
     val positionMs: Long
         get() = when {
             ended -> durationMs
-            isOpening -> 0L // MediaPlayer can't be asked while it prepares
+            isOpening -> 0L // nothing to ask until it is open
             else -> output?.positionMs ?: 0L
         }
 

@@ -1,6 +1,5 @@
 package com.lithic.voicerecorder
 
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -82,15 +81,18 @@ class RecordingFilesTest {
         assertEquals(listOf("Take.wav"), tmp.root.list()!!.toList())
     }
 
+    /** A moment in 2026, as the trash's names hold it (13 digits of ms). */
+    private val now = 1_790_000_000_000L
+
     @Test
     fun a_deleted_recording_waits_in_the_trash_and_comes_back() {
         val take = file("Take.wav")
-        val trashed = RecordingFiles.trash(take, now = 5_000)!!
+        val trashed = RecordingFiles.trash(take, now)!!
         assertEquals(emptyList<String>(), RecordingFiles.list(tmp.root).map { it.file.name }) // no longer listed
         val item = RecordingFiles.trashed(tmp.root).single()
         assertEquals("Take.wav", item.name)
-        assertEquals(5_000L, item.deletedAt)
-        assertEquals(trashed, item.file)
+        assertEquals(now, item.deletedAt)
+        assertEquals(trashed, item) // what trash() says it put there is what the trash lists
 
         assertEquals(File(tmp.root, "Take.wav"), RecordingFiles.restore(item, tmp.root))
         assertEquals(listOf("Take.wav"), RecordingFiles.list(tmp.root).map { it.file.name })
@@ -100,7 +102,7 @@ class RecordingFilesTest {
     /** A new recording took the name meanwhile: the old one comes back beside it, never over it. */
     @Test
     fun a_restored_recording_never_overwrites() {
-        RecordingFiles.trash(file("Take.wav"), now = 5_000)
+        RecordingFiles.trash(file("Take.wav"), now)
         file("Take.wav")
         val back = RecordingFiles.restore(RecordingFiles.trashed(tmp.root).single(), tmp.root)
         assertEquals(File(tmp.root, "Take_2.wav"), back)
@@ -108,17 +110,33 @@ class RecordingFilesTest {
 
     @Test
     fun the_same_name_deleted_twice_keeps_both() {
-        RecordingFiles.trash(file("Take.wav"), now = 5_000)
-        RecordingFiles.trash(file("Take.wav"), now = 5_000)
+        RecordingFiles.trash(file("Take.wav"), now)
+        RecordingFiles.trash(file("Take.wav"), now)
         assertEquals(2, RecordingFiles.trashed(tmp.root).size)
+    }
+
+    /**
+     * A trash folder holds only what this app put there; anything else in it (another app's,
+     * a note, a name that isn't a time and a recording) is neither listed nor ever deleted.
+     */
+    @Test
+    fun the_trash_leaves_alone_what_it_did_not_put_there() {
+        val trash = File(tmp.root, RecordingFiles.TRASH_FOLDER).apply { mkdirs() }
+        val foreign = listOf("20240115-notes.txt", "20240115-take.wav", "1700000000000-notes.txt", "take.wav")
+            .map { File(trash, it).apply { writeBytes(byteArrayOf(1)) } }
+        RecordingFiles.trash(file("Take.wav"), now)
+        assertEquals(listOf("Take.wav"), RecordingFiles.trashed(tmp.root).map { it.name })
+        RecordingFiles.purgeTrash(tmp.root, now = now + 365L * 24 * 60 * 60 * 1000)
+        assertEquals(emptyList<RecordingFiles.Trashed>(), RecordingFiles.trashed(tmp.root))
+        for (f in foreign) assertEquals(f.name, true, f.exists())
     }
 
     @Test
     fun the_trash_lets_go_after_thirty_days() {
         val day = 24L * 60 * 60 * 1000
-        RecordingFiles.trash(file("Old.wav"), now = 0)
-        RecordingFiles.trash(file("New.wav"), now = 25 * day)
-        RecordingFiles.purgeTrash(tmp.root, now = 31 * day)
+        RecordingFiles.trash(file("Old.wav"), now)
+        RecordingFiles.trash(file("New.wav"), now + 25 * day)
+        RecordingFiles.purgeTrash(tmp.root, now = now + 31 * day)
         assertEquals(listOf("New.wav"), RecordingFiles.trashed(tmp.root).map { it.name })
     }
 
@@ -183,32 +201,6 @@ class RecordingFilesTest {
         val f = wav("short.wav", 16000, 1.0, finish = true)
         RandomAccessFile(f, "rw").use { it.setLength(it.length() - 16000) } // half the audio gone
         assertEquals(500L, RecordingFiles.wavDurationMs(f))
-    }
-
-    /**
-     * Android's player refuses a WAV whose sizes are still unknown, so a cut-off take is played
-     * through a [WavView]: it must read exactly as the same audio finished properly would.
-     */
-    @Test
-    fun a_cut_off_wav_reads_through_its_view_as_if_finished() {
-        val cut = wav("cut.wav", 44100, 1.5, finish = false)
-        RandomAccessFile(cut, "rw").use { it.setLength(it.length() + 1) } // a frame cut short
-        val finished = wav("done.wav", 44100, 1.5, finish = true)
-        val layout = WavLayout.read(cut)!!
-        assertEquals(false, layout.sizesRight)
-        val read = WavView(cut, layout).use { view ->
-            val out = ByteArray(view.length.toInt())
-            var at = 0
-            while (at < out.size) at += view.readAt(at.toLong(), out, at, minOf(4096, out.size - at)) // as the player reads, in pieces
-            assertEquals(-1, view.readAt(view.length, ByteArray(16), 0, 16))
-            out
-        }
-        assertArrayEquals(finished.readBytes(), read)
-    }
-
-    @Test
-    fun a_finished_wav_needs_no_view() {
-        assertEquals(true, WavLayout.read(wav("done.wav", 16000, 1.0, finish = true))!!.sizesRight)
     }
 
     @Test

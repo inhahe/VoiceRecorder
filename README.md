@@ -92,14 +92,15 @@ built-in directory navigator.
   playing, in step with what you hear. Its **⋮** menu shares it to another app, renames it (the
   extension is kept, and nothing is ever overwritten) or deletes it, with an **Undo**: a deleted
   recording waits under **Recently deleted** (the screen's own **⋮** menu) for 30 days, to be
-  restored or deleted for good, then goes by itself. The "Saved" message after a recording has a **Play**
+  restored or deleted for good, then goes by itself; the list's summary and the menu say how much
+  it holds, since it still takes space until then. The player plays the formats Android plays
+  (WAV of any bit depth, M4A, Opus, MP3, FLAC, AMR and more), with any number of channels. The "Saved" message after a recording has a **Play**
   button that opens it there. Playing pauses when you leave the screen, when a call or another app
   takes the sound (and says so if one has it when you press Play), and when headphones are
   unplugged; turning the phone doesn't interrupt it. The
   recording being made shows as "Recording…" and can't be played, renamed or deleted until it is
   finished, and playing another one aloud meanwhile asks first unless headphones are plugged in,
-  since the microphone would record it into the take. A WAV cut off by the app being killed shows its real length and plays, though Android's
-  own player refuses it.
+  since the microphone would record it into the take. A WAV cut off by the app being killed shows its real length and plays.
 - **Foreground service:** recording runs in a `microphone` foreground service with an ongoing
   notification, so it survives screen-off / backgrounding.
 
@@ -147,11 +148,12 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 | `SettingsActivity.kt` | Configure default format / sample rate / bitrate / channels / folder / filename pattern. |
 | `RecordingsActivity.kt` | The recordings screen: the save folder's recordings (listed and measured off the main thread, followed with a `FileObserver`), share / rename / delete, and the player bar. `RecordingsModel` (in the same file) keeps the player through a rotation. |
 | `PlayerController.kt` | The player's rules (open, play, pause, the end, errors, a recording renamed or deleted under it) over an `AudioOutput`, so they are tested on the JVM. |
-| `DecodingOutput.kt` | The `AudioOutput` a phone uses: decodes with `MediaExtractor` and `MediaCodec` and plays through an `AudioTrack`, so the spectrum can be shown for what is heard. |
-| `PlaybackMeterQueue.kt` | The playback spectrum: decoded blocks queued by the frame they start at, analysed once the track has played them. |
+| `ExoOutput.kt` | The `AudioOutput` a phone uses: Media3's ExoPlayer, with its audio sink wrapped so each decoded buffer is queued for the spectrum, and the file read through the descriptor opened once. |
+| `PlaybackMeterQueue.kt` | The playback spectrum: decoded blocks queued by the time they start at, analysed once the output has reached them. |
+| `Pcm16.kt` | Decoded PCM of any encoding (8/16/24/32-bit, either byte order, float) as the 16-bit samples the spectrum takes. |
 | `RecordingFiles.kt` | Which files are recordings, the rename rules, Recently deleted (the trash), the length clock, a share's MIME type. |
 | `Views.kt` | Small view helpers shared by the screens (`setTextIfChanged`, for text set on a tick). |
-| `WavLayout.kt` | A WAV's layout and length from its header (a cut-off one included), and `WavView`, the corrected view a cut-off WAV is played through. |
+| `WavLayout.kt` | A WAV's length from its header, a cut-off one included. |
 | `RecordingService.kt` | Foreground (`microphone`) service that owns the active recorder + the live [`SpectrumAnalyzer`], and pauses the recording if its chosen input is unplugged. |
 | `Recorder.kt` | `Recorder` interface + `RecorderFactory`. |
 | `PcmRecorder.kt` | The single capture engine: one `AudioRecord` reads PCM and tees it to the encoder + analyzer. |
@@ -161,7 +163,7 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 | `InputDevices.kt` | Capture-device enumeration, labelling, the reconnect-stable key the chosen input is persisted as, the missing-input rules (ask, never fall back; when to pause and resume), and the device-vs-requested sample-rate advice. |
 | `CaptureSource.kt` | Processed vs raw capture: maps the preference onto a `MediaRecorder.AudioSource`, with the fallback for devices lacking `UNPROCESSED`. |
 | `SpectrumAnalyzer.kt` | Windows/FFTs the PCM stream into log-spaced 0..1 magnitude bands. |
-| `SpectrumView.kt` | Custom view that eases/animates the analyzer bands while recording. |
+| `SpectrumView.kt` | Custom view that eases/animates the analyzer bands: while recording, and in the player bar. |
 | `Fft.kt` | Dependency-free radix-2 FFT. |
 | `AudioFormatSpec.kt` | Format enum (incl. each format's encoder mime) + resolved spec; candidate rate/bitrate lists, kHz labelling, rate snapping, bytes/second estimation. |
 | `SampleRateSupport.kt` | Probes which sample rates this device can actually record in each format — capture and encoder each get a veto. Cached per format+channels. |

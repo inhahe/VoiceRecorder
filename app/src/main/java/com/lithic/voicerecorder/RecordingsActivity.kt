@@ -64,6 +64,12 @@ class RecordingsActivity : AppCompatActivity() {
     /** Lists the folder and reads lengths, one job at a time: a slow card mustn't hold up the screen. */
     private val background: ExecutorService = Executors.newSingleThreadExecutor()
 
+    /** Lists the trash for Recently deleted, which mustn't wait behind the lengths being measured on [background]. */
+    private val trashThread: ExecutorService = Executors.newSingleThreadExecutor()
+
+    /** What Recently deleted holds, in bytes, as of the last listing: the summary and the menu say it. */
+    private var trashBytes = 0L
+
     /** A recording as listed. [lengthMs] is null while unknown, and stays null for one that can't be read. */
     private data class Row(val file: File, val size: Long, val modified: Long, val lengthMs: Long?, val measured: Boolean)
 
@@ -161,6 +167,7 @@ class RecordingsActivity : AppCompatActivity() {
         main.removeCallbacksAndMessages(null)
         model.onChange = null
         background.shutdownNow()
+        trashThread.shutdownNow()
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -171,6 +178,15 @@ class RecordingsActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, MENU_TRASH, 0, R.string.trash_title)
         return true
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        menu.findItem(MENU_TRASH)?.title = if (trashBytes > 0) {
+            getString(R.string.trash_title_size, StorageUtil.formatBytes(trashBytes))
+        } else {
+            getString(R.string.trash_title)
+        }
+        return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -209,10 +225,10 @@ class RecordingsActivity : AppCompatActivity() {
      * its way from the observer's thread can still post a refresh after [onDestroy], and the
      * executor is shut down by then.
      */
-    private fun inBackground(job: () -> Unit) {
-        if (isDestroyed || background.isShutdown) return
+    private fun inBackground(executor: ExecutorService = background, job: () -> Unit) {
+        if (isDestroyed || executor.isShutdown) return
         try {
-            background.execute(job)
+            executor.execute(job)
         } catch (e: RejectedExecutionException) {
             // shut down between the check and the call: the screen is going anyway
         }
@@ -225,9 +241,14 @@ class RecordingsActivity : AppCompatActivity() {
         inBackground {
             RecordingFiles.finishRenames(dir)
             RecordingFiles.purgeTrash(dir, System.currentTimeMillis())
+            val inTrash = RecordingFiles.trashed(dir).sumOf { it.size }
             val files = RecordingFiles.list(dir)
             main.post {
                 if (id != listing || isDestroyed) return@post
+                if (inTrash != trashBytes) {
+                    trashBytes = inTrash
+                    invalidateOptionsMenu()
+                }
                 val rows = files.map { (file, size, modified) ->
                     val known = RecordingLengths.get(file, size, modified)
                     Row(file, size, modified, known?.ms, known != null)
@@ -279,7 +300,7 @@ class RecordingsActivity : AppCompatActivity() {
             rows.isEmpty() -> dir.absolutePath
             else -> resources.getQuantityString(R.plurals.recordings_summary, rows.size, rows.size, StorageUtil.formatBytes(bytes)) +
                 " · " + dir.absolutePath
-        }
+        } + if (trashBytes > 0) " · " + getString(R.string.recordings_summary_trash, StorageUtil.formatBytes(trashBytes)) else ""
         binding.emptyText.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
         binding.emptyText.setText(if (dir.isDirectory) R.string.recordings_empty else R.string.recordings_no_folder)
         // The recording in the player may have been deleted or renamed by another app.
@@ -323,7 +344,7 @@ class RecordingsActivity : AppCompatActivity() {
     private fun headphonesAttached(): Boolean {
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val types = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            audio.getAudioDevicesForAttributes(DecodingOutput.ATTRIBUTES).map { it.type }
+            audio.getAudioDevicesForAttributes(ExoOutput.ATTRIBUTES).map { it.type }
         } else {
             audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.type }
         }
@@ -420,16 +441,17 @@ class RecordingsActivity : AppCompatActivity() {
     private fun delete(file: File) {
         if (file == RecordingService.activeFile) return
         player.release(file) // nothing plays on from a file that is gone
+        val dir = file.parentFile ?: return
         val trashed = RecordingFiles.trash(file, System.currentTimeMillis())
         refresh()
         if (trashed == null) {
-            Toast.makeText(this, getString(R.string.recording_delete_failed, file.name), Toast.LENGTH_LONG).show()
+            // One another app removed meanwhile is gone already: nothing failed.
+            if (file.exists()) Toast.makeText(this, getString(R.string.recording_delete_failed, file.name), Toast.LENGTH_LONG).show()
             return
         }
         Snackbar.make(binding.root, getString(R.string.recording_deleted, file.name), Snackbar.LENGTH_LONG)
             .setAction(R.string.undo) {
-                val item = RecordingFiles.trashed(file.parentFile ?: return@setAction).firstOrNull { it.file == trashed }
-                if (item == null || RecordingFiles.restore(item, file.parentFile!!) == null) {
+                if (RecordingFiles.restore(trashed, dir) == null) {
                     Toast.makeText(this, getString(R.string.trash_restore_failed, file.name), Toast.LENGTH_LONG).show()
                 }
                 refresh()
@@ -440,7 +462,7 @@ class RecordingsActivity : AppCompatActivity() {
     /** Recently deleted: restore a recording, delete one for good, or empty the lot. */
     private fun showTrash() {
         val dir = folder ?: settings.saveDirectoryFile()
-        inBackground {
+        inBackground(trashThread) {
             val items = RecordingFiles.trashed(dir)
             main.post {
                 if (isDestroyed) return@post
@@ -477,6 +499,7 @@ class RecordingsActivity : AppCompatActivity() {
                 if (!item.file.delete() && item.file.exists()) {
                     Toast.makeText(this, getString(R.string.recording_delete_failed, item.name), Toast.LENGTH_LONG).show()
                 }
+                refresh() // the space it held, gone from the summary
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -486,7 +509,10 @@ class RecordingsActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(R.string.trash_empty_all)
             .setMessage(resources.getQuantityString(R.plurals.trash_empty_message, items.size, items.size))
-            .setPositiveButton(R.string.trash_delete_forever) { _, _ -> items.forEach { it.file.delete() } }
+            .setPositiveButton(R.string.trash_delete_forever) { _, _ ->
+                items.forEach { it.file.delete() }
+                refresh()
+            }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
@@ -650,7 +676,7 @@ class RecordingsModel(app: Application) : AndroidViewModel(app) {
     private val audioManager = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val focusRequest: AudioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-        .setAudioAttributes(DecodingOutput.ATTRIBUTES)
+        .setAudioAttributes(ExoOutput.ATTRIBUTES)
         .setOnAudioFocusChangeListener { change ->
             // Another app's sound (a call, navigation): this is a recording being checked, not
             // music to duck under it, so it pauses, and the user resumes it.
@@ -663,7 +689,7 @@ class RecordingsModel(app: Application) : AndroidViewModel(app) {
         .build()
 
     val player: PlayerController = PlayerController(
-        newOutput = { DecodingOutput(app) },
+        newOutput = { ExoOutput(app) },
         requestFocus = { audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED },
         focusRefused = app.getString(R.string.player_focus_refused),
         abandonFocus = { audioManager.abandonAudioFocusRequest(focusRequest) },

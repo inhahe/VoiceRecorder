@@ -1,0 +1,1 @@
+The player is now Media3's ExoPlayer: it plays more formats (24-bit and float WAV, FLAC, more than two channels), keeps the spectrum in step with what you hear on Bluetooth too, and ends properly after a seek near the end. Recently deleted keeps its files in a folder of its own, leaves anything else alone, and the list shows how much it holds.

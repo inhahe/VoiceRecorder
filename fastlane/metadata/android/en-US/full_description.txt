@@ -8,7 +8,8 @@ Features:
 • Input selection: record from the phone's mic, a wired or Bluetooth headset, or a USB microphone or audio interface. The choice is remembered across reconnects, and the app shows which input is really in use.
 • No silent fallback: if your chosen input is missing when you press Record, or is unplugged during a recording, the app pauses and asks instead of quietly recording from the phone's mic.
 • Pause and resume during a recording.
-• Recordings and player: the recordings in your save folder with their length, size and date. Play, pause and move through one, and share, rename or delete it.
+• Recordings and player: the recordings in your save folder with their length, size and date. Play, pause and move through one, with the spectrum of what you hear, and share, rename or delete it.
+• Recently deleted: a deleted recording waits 30 days, with an Undo, to be restored or deleted for good.
 • Editable file names, chosen before recording starts, with a history of recent names for multiple takes. Takes never overwrite each other.
 • A built-in folder navigator: browse, create folders and choose where recordings go.
 • Storage readout: about how many hours of audio fit in the target folder at the current settings.

@@ -179,7 +179,7 @@ On the home screen, **Change folder** (two lines of text beside its icon) stands
 
 ## Recently deleted is the app's own, not Android's trash
 
-Deleting moves a recording into a hidden `.trash` folder beside it, where it waits 30 days
+Deleting moves a recording into a hidden `.voicerecorder-trash` folder beside it, where it waits 30 days
 (design.md, *Recently deleted*). Android 11 and later have a trash of their own
 (`MediaStore.createTrashRequest`), which Files apps show, but only for files MediaStore knows by
 URI, and every request shows a system dialog; the app reaches its files through "All files
