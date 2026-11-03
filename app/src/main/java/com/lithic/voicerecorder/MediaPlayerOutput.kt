@@ -27,12 +27,7 @@ class MediaPlayerOutput(private val context: Context) : AudioOutput {
     private var view: WavView? = null
 
     override fun open(file: File, onReady: (durationMs: Long) -> Unit, onEnd: () -> Unit, onError: (String) -> Unit) {
-        player.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
-        )
+        player.setAudioAttributes(ATTRIBUTES)
         try {
             val wav = if (file.extension.equals("wav", ignoreCase = true)) WavLayout.read(file) else null
             if (wav != null && !wav.sizesRight) {
@@ -50,11 +45,8 @@ class MediaPlayerOutput(private val context: Context) : AudioOutput {
             } else {
                 FileInputStream(file).use { player.setDataSource(it.fd) }
             }
-        } catch (e: IOException) {
-            main.post { if (!released) onError(context.getString(R.string.player_cant_open, file.name, e.message ?: "")) }
-            return
-        } catch (e: RuntimeException) {
-            // IllegalArgumentException and the like, for a file MediaPlayer refuses outright.
+        } catch (e: Exception) {
+            // An IOException, or IllegalArgumentException and the like for a file MediaPlayer refuses outright.
             main.post { if (!released) onError(context.getString(R.string.player_cant_open, file.name, e.message ?: "")) }
             return
         }
@@ -82,5 +74,16 @@ class MediaPlayerOutput(private val context: Context) : AudioOutput {
         main.removeCallbacksAndMessages(null)
         player.release()
         view?.close()
+    }
+
+    companion object {
+        /**
+         * What the player plays as, and the audio focus it asks for: the two must agree, since
+         * the system decides from them how to treat the sound (speech isn't ducked under others).
+         */
+        val ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
     }
 }

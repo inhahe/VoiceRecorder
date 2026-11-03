@@ -13,7 +13,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.text.TextUtils
 import android.view.LayoutInflater
 import android.widget.TextView
 import android.widget.Toast
@@ -705,10 +704,4 @@ class MainActivity : AppCompatActivity() {
             if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
             else String.format(Locale.US, "%02d:%02d", m, s)
     }
-
-    /** For text polled on a tick: a TextView lays itself out and redraws on every set, changed or not. */
-    private fun TextView.setTextIfChanged(value: CharSequence) {
-        if (!TextUtils.equals(text, value)) text = value
-    }
-
 }

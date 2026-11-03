@@ -72,6 +72,31 @@ class PlayerControllerTest {
         assertEquals(1, focusHeld)
     }
 
+    /** Home pressed, or a second tap, while it opens: it doesn't start a moment later with no screen to stop it. */
+    @Test
+    fun a_pause_while_it_opens_keeps_it_from_starting() {
+        player.play(a)
+        player.pause()
+        outputs.last().ready!!(10_000)
+        assertFalse(player.isPlaying)
+        assertFalse(outputs.last().playing)
+        assertEquals(0, focusHeld)
+        player.toggle() // now open and paused: plays
+        assertTrue(outputs.last().playing)
+    }
+
+    @Test
+    fun the_play_button_pressed_twice_while_it_opens_leaves_it_paused() {
+        player.play(a)
+        assertTrue(player.isPlayingOrStarting)
+        player.toggle()
+        assertFalse(player.isPlayingOrStarting)
+        player.toggle()
+        assertTrue(player.isPlayingOrStarting)
+        outputs.last().ready!!(10_000)
+        assertTrue(outputs.last().playing)
+    }
+
     @Test
     fun the_play_button_pauses_and_resumes_where_it_was() {
         val out = opened(a)

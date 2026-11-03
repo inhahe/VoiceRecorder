@@ -94,7 +94,8 @@ built-in directory navigator.
   button that opens it there. Playing pauses when you leave the screen, when a call or another app
   takes the sound, and when headphones are unplugged; turning the phone doesn't interrupt it. The
   recording being made shows as "Recording…" and can't be played, renamed or deleted until it is
-  finished. A WAV cut off by the app being killed shows its real length and plays, though Android's
+  finished, and playing another one aloud meanwhile asks first unless headphones are plugged in,
+  since the microphone would record it into the take. A WAV cut off by the app being killed shows its real length and plays, though Android's
   own player refuses it.
 - **Foreground service:** recording runs in a `microphone` foreground service with an ongoing
   notification, so it survives screen-off / backgrounding.
@@ -145,6 +146,7 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 | `PlayerController.kt` | The player's rules (open, play, pause, the end, errors, a recording renamed or deleted under it) over an `AudioOutput`, so they are tested on the JVM. |
 | `MediaPlayerOutput.kt` | The `AudioOutput` a phone uses: Android's `MediaPlayer`. |
 | `RecordingFiles.kt` | Which files are recordings, the rename rules, the length clock, a share's MIME type. |
+| `Views.kt` | Small view helpers shared by the screens (`setTextIfChanged`, for text set on a tick). |
 | `WavLayout.kt` | A WAV's layout and length from its header (a cut-off one included), and `WavView`, the corrected view a cut-off WAV is played through. |
 | `RecordingService.kt` | Foreground (`microphone`) service that owns the active recorder + the live [`SpectrumAnalyzer`], and pauses the recording if its chosen input is unplugged. |
 | `Recorder.kt` | `Recorder` interface + `RecorderFactory`. |

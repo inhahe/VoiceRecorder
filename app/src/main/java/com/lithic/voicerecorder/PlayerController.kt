@@ -62,6 +62,15 @@ class PlayerController(
 
     private var output: AudioOutput? = null
 
+    /**
+     * Start once open. Cleared by a pause while it opens: the screen going (Home) or a second tap
+     * meant as "pause" must not have it start a moment later with nothing on screen to stop it.
+     */
+    private var playWhenReady = false
+
+    /** Playing, or about to once open: what the play button shows as "pause". */
+    val isPlayingOrStarting: Boolean get() = isPlaying || isOpening && playWhenReady
+
     /** Played to its end: Play starts again from the beginning, and the position shows the end. */
     private var ended = false
 
@@ -79,6 +88,7 @@ class PlayerController(
         file = target
         error = null
         isOpening = true
+        playWhenReady = true
         val out = newOutput()
         output = out
         out.open(
@@ -87,7 +97,7 @@ class PlayerController(
                 if (output === out) {
                     isOpening = false
                     durationMs = length.coerceAtLeast(0)
-                    start(out)
+                    if (playWhenReady) start(out) else onChange()
                 }
             },
             onEnd = {
@@ -111,7 +121,7 @@ class PlayerController(
 
     /** The play button: pauses, resumes, plays again after the end, or reopens after an error. */
     fun toggle() {
-        if (isPlaying) pause() else resume()
+        if (isPlayingOrStarting) pause() else resume()
     }
 
     fun resume() {
@@ -119,7 +129,10 @@ class PlayerController(
         val out = output
         when {
             out == null -> play(target) // after an error, or before anything was opened
-            isOpening -> Unit // starts by itself once open
+            isOpening -> {
+                playWhenReady = true // starts by itself once open
+                onChange()
+            }
             else -> {
                 if (ended) {
                     out.seekTo(0)
@@ -141,6 +154,11 @@ class PlayerController(
     }
 
     fun pause() {
+        if (isOpening && playWhenReady) {
+            playWhenReady = false
+            onChange()
+            return
+        }
         if (!isPlaying) return
         output?.pause()
         isPlaying = false
@@ -195,6 +213,7 @@ class PlayerController(
         out.release()
         isPlaying = false
         isOpening = false
+        playWhenReady = false
         ended = false
         durationMs = 0
     }

@@ -117,9 +117,9 @@ class RecordingService : Service() {
         private set
 
     /** Absolute path of the file currently being written, or null when idle. */
-    var currentFile: File? = null
+    var currentFile: File?
+        get() = activeFile
         private set(value) {
-            field = value
             activeFile = value
         }
 

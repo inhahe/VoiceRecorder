@@ -3,6 +3,7 @@ package com.lithic.voicerecorder
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -27,13 +28,23 @@ class RecordingFilesTest {
         file("mid.opus", modified = 2_000_000)
         file("notes.txt", modified = 4_000_000)
         tmp.newFolder("folder.wav")
-        assertEquals(listOf("new.m4a", "mid.opus", "old.wav"), RecordingFiles.list(tmp.root).map { it.name })
+        assertEquals(listOf("new.m4a", "mid.opus", "old.wav"), RecordingFiles.list(tmp.root).map { it.file.name })
+        assertEquals(3_000_000L, RecordingFiles.list(tmp.root).first().modified)
+    }
+
+    /** MediaStore's trash and unfinished writes sit beside the recordings as hidden files. */
+    @Test
+    fun hidden_files_are_not_listed() {
+        file(".trashed-1733000000-take.wav")
+        file(".pending-1733000000-other.m4a")
+        file("take2.wav")
+        assertEquals(listOf("take2.wav"), RecordingFiles.list(tmp.root).map { it.file.name })
     }
 
     @Test
     fun extensions_are_matched_ignoring_case() {
         file("LOUD.WAV")
-        assertEquals(listOf("LOUD.WAV"), RecordingFiles.list(tmp.root).map { it.name })
+        assertEquals(listOf("LOUD.WAV"), RecordingFiles.list(tmp.root).map { it.file.name })
     }
 
     @Test
@@ -57,7 +68,23 @@ class RecordingFilesTest {
     @Test
     fun a_change_of_case_alone_is_a_rename() {
         val take = file("take.wav")
-        assertEquals(RecordingFiles.Rename.To(File(tmp.root, "Take.wav")), RecordingFiles.renameTarget(take, "Take"))
+        val check = RecordingFiles.renameTarget(take, "Take")
+        assertEquals(RecordingFiles.Rename.To(File(tmp.root, "Take.wav")), check)
+        assertTrue(RecordingFiles.rename(take, (check as RecordingFiles.Rename.To).target))
+        assertEquals(listOf("Take.wav"), tmp.root.list()!!.toList()) // listed under the new case, nothing left behind
+    }
+
+    @Test
+    fun a_rename_is_listed_under_its_new_name() {
+        val take = file("Take.wav")
+        assertTrue(RecordingFiles.rename(take, File(tmp.root, "Interview.wav")))
+        assertEquals(listOf("Interview.wav"), tmp.root.list()!!.toList())
+    }
+
+    @Test
+    fun a_name_with_a_leading_dot_is_refused() {
+        val take = file("Take.wav")
+        assertEquals(RecordingFiles.Rename.Refused(RecordingFiles.Problem.HIDDEN), RecordingFiles.renameTarget(take, ".secret"))
     }
 
     @Test

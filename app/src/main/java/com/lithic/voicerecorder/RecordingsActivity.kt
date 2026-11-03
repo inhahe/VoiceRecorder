@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Typeface
-import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
@@ -29,7 +29,9 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.lithic.voicerecorder.databinding.ActivityRecordingsBinding
@@ -64,9 +66,15 @@ class RecordingsActivity : AppCompatActivity() {
 
     private var folder: File? = null
     private var observer: FileObserver? = null
-    private var listing = 0 // bumped per listing, so an older one finishing late is dropped
+
+    /** Bumped per listing, so an older one finishing late is dropped, and its measuring skipped. Read on the background thread. */
+    @Volatile
+    private var listing = 0
+
     private var scrubbing = false
-    private var toPlay: String? = null // asked for by the intent; played once listed
+
+    /** Asked for by the intent ("Play" on "Saved"); played once listed with the screen started. Kept through recreation. */
+    private var toPlay: String? = null
 
     /** Headphones unplugged (or a Bluetooth headset gone): stop before the speaker takes over. */
     private val noisy = object : BroadcastReceiver() {
@@ -88,17 +96,22 @@ class RecordingsActivity : AppCompatActivity() {
         setContentView(binding.root)
         binding.root.padBelowActionBar()
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        title = getString(R.string.recordings_title)
+        title = getString(R.string.recordings)
         settings = Settings(this)
         model.onChange = ::onPlayerChanged
 
         binding.recordingsList.layoutManager = LinearLayoutManager(this)
         binding.recordingsList.adapter = adapter
-        binding.playButton.setOnClickListener { player.toggle() }
+        binding.playButton.setOnClickListener {
+            if (player.isPlayingOrStarting) player.pause() else checkingRecording(player.file) { player.toggle() }
+        }
         binding.rewindButton.setOnClickListener { player.stop() }
         binding.positionBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) binding.positionText.text = positionText(progress.toLong())
+                if (!fromUser) return
+                binding.positionText.setTextIfChanged(positionText(progress.toLong()))
+                // Keys and TalkBack's adjust actions move the bar without a drag: they seek at once.
+                if (!scrubbing) player.seekTo(progress.toLong())
             }
 
             override fun onStartTrackingTouch(bar: SeekBar?) {
@@ -111,9 +124,14 @@ class RecordingsActivity : AppCompatActivity() {
                 showPosition()
             }
         })
-        // Recreated (turned, say), the recording asked for is already in the player.
-        toPlay = if (savedInstanceState == null) intent.getStringExtra(EXTRA_PLAY) else null
+        // Recreated (turned, say): asked for and not yet played, it is still to play.
+        toPlay = if (savedInstanceState == null) intent.getStringExtra(EXTRA_PLAY) else savedInstanceState.getString(STATE_TO_PLAY)
         onPlayerChanged()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_TO_PLAY, toPlay)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -197,18 +215,22 @@ class RecordingsActivity : AppCompatActivity() {
         val dir = folder ?: settings.saveDirectoryFile()
         val id = ++listing
         inBackground {
-            val files = RecordingFiles.list(dir).map { Triple(it, it.length(), it.lastModified()) }
+            val files = RecordingFiles.list(dir)
             main.post {
                 if (id != listing || isDestroyed) return@post
                 val rows = files.map { (file, size, modified) ->
-                    val known = model.lengths[file.path]?.takeIf { it.size == size && it.modified == modified }
+                    val known = RecordingLengths.get(file, size, modified)
                     Row(file, size, modified, known?.ms, known != null)
                 }
                 show(dir, rows)
                 for (row in rows) if (!row.measured && row.file != RecordingService.activeFile) measure(row, id)
-                toPlay?.let { path ->
-                    toPlay = null
-                    rows.firstOrNull { it.file.path == path }?.let { play(it.file) }
+                // Only with the screen started: from the background it would play with nothing
+                // on screen to stop it. The next listing, at onStart, plays it then.
+                if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    toPlay?.let { path ->
+                        toPlay = null
+                        rows.firstOrNull { it.file.path == path }?.let { play(it.file) }
+                    }
                 }
             }
         }
@@ -216,9 +238,11 @@ class RecordingsActivity : AppCompatActivity() {
 
     private fun measure(row: Row, id: Int) {
         inBackground {
+            // A newer listing is waiting behind this: it measures what is still there itself.
+            if (id != listing) return@inBackground
             val ms = lengthOf(row.file)
             main.post {
-                model.lengths[row.file.path] = RecordingsModel.Measured(row.size, row.modified, ms)
+                RecordingLengths.put(row.file, row.size, row.modified, ms)
                 if (id == listing) adapter.update(row.file) { it.copy(lengthMs = ms, measured = true) }
             }
         }
@@ -257,14 +281,37 @@ class RecordingsActivity : AppCompatActivity() {
     private fun onRowClicked(row: Row) {
         when {
             row.file == RecordingService.activeFile -> Toast.makeText(this, R.string.recording_in_progress, Toast.LENGTH_SHORT).show()
-            row.file == player.file -> player.toggle()
+            row.file == player.file && player.isPlayingOrStarting -> player.pause()
+            row.file == player.file -> checkingRecording(row.file) { player.toggle() }
             else -> play(row.file)
         }
     }
 
     private fun play(file: File) {
         if (file == RecordingService.activeFile) return
-        player.play(file)
+        checkingRecording(file) { player.play(file) }
+    }
+
+    /**
+     * Runs [start], which makes [file] play aloud, after asking first if a take is being recorded
+     * and nothing but the speaker would play it: the microphone would record it into the take.
+     */
+    private fun checkingRecording(file: File?, start: () -> Unit) {
+        if (RecordingService.activeFile == null || file == null || headphonesAttached()) {
+            start()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.recording_while_recording_title)
+            .setMessage(getString(R.string.recording_while_recording_message, file.name))
+            .setPositiveButton(R.string.recording_play_anyway) { _, _ -> start() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun headphonesAttached(): Boolean {
+        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in PRIVATE_OUTPUTS }
     }
 
     private fun onRowMenu(row: Row, anchor: View) {
@@ -327,6 +374,7 @@ class RecordingsActivity : AppCompatActivity() {
                         when (check.why) {
                             RecordingFiles.Problem.EMPTY -> R.string.filename_required
                             RecordingFiles.Problem.ILLEGAL -> R.string.filename_illegal
+                            RecordingFiles.Problem.HIDDEN -> R.string.recording_rename_hidden
                             RecordingFiles.Problem.EXISTS -> R.string.recording_rename_exists
                         }
                     )
@@ -334,7 +382,7 @@ class RecordingsActivity : AppCompatActivity() {
                     is RecordingFiles.Rename.To -> {
                         if (file == RecordingService.activeFile) {
                             dialog.dismiss() // the take started meanwhile
-                        } else if (file.renameTo(check.target)) {
+                        } else if (RecordingFiles.rename(file, check.target)) {
                             player.renamed(file, check.target)
                             dialog.dismiss()
                             refresh()
@@ -371,11 +419,16 @@ class RecordingsActivity : AppCompatActivity() {
         binding.playerTitle.text = file?.name ?: getString(R.string.player_nothing_loaded)
         binding.playerError.text = player.error
         binding.playerError.visibility = if (player.error != null) View.VISIBLE else View.GONE
-        binding.playButton.setImageResource(if (player.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-        binding.playButton.contentDescription = getString(if (player.isPlaying) R.string.player_pause else R.string.player_play)
-        binding.playButton.isEnabled = file != null && !player.isOpening
+        val playing = player.isPlayingOrStarting
+        binding.playButton.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
+        binding.playButton.contentDescription = getString(if (playing) R.string.player_pause else R.string.player_play)
+        binding.playButton.isEnabled = file != null
         binding.rewindButton.isEnabled = file != null && !player.isOpening
-        binding.positionBar.isEnabled = file != null && !player.isOpening && player.error == null
+        val seekable = file != null && !player.isOpening && player.error == null
+        // Disabled mid-drag, the bar never reports the drag's end: without this the position
+        // would stay frozen for every recording played after.
+        if (!seekable) scrubbing = false
+        binding.positionBar.isEnabled = seekable
         binding.positionBar.max = player.durationMs.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
         showPosition()
         main.removeCallbacks(tick)
@@ -387,7 +440,7 @@ class RecordingsActivity : AppCompatActivity() {
         if (scrubbing) return
         val at = player.positionMs
         binding.positionBar.progress = at.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
-        binding.positionText.text = if (player.file == null) "" else positionText(at)
+        binding.positionText.setTextIfChanged(if (player.file == null) "" else positionText(at))
     }
 
     private fun positionText(at: Long): String {
@@ -418,6 +471,7 @@ class RecordingsActivity : AppCompatActivity() {
         }
 
         fun markPlayer(file: File?, isPlaying: Boolean) {
+            if (file == loaded && isPlaying == playing) return
             val before = loaded
             loaded = file
             playing = isPlaying
@@ -445,7 +499,8 @@ class RecordingsActivity : AppCompatActivity() {
                 recordingDetails.text = getString(R.string.recording_details, length, StorageUtil.formatBytes(row.size), date)
                 playerMark.visibility = if (inPlayer) View.VISIBLE else View.GONE
                 playerMark.setImageResource(if (inPlayer && playing) R.drawable.ic_volume_up else R.drawable.ic_pause)
-                playerMark.contentDescription = if (inPlayer) getString(if (playing) R.string.player_playing else R.string.player_paused) else null
+                // Said by TalkBack with the row, which the mark itself isn't.
+                ViewCompat.setStateDescription(root, if (inPlayer) getString(if (playing) R.string.player_playing else R.string.player_paused) else null)
                 root.setOnClickListener { onRowClicked(row) }
                 recordingMenu.setOnClickListener { onRowMenu(row, it) }
             }
@@ -456,6 +511,14 @@ class RecordingsActivity : AppCompatActivity() {
         /** Path of a recording to play once the list is shown: "Play" on the "Saved" message. */
         const val EXTRA_PLAY = "play"
 
+        private const val STATE_TO_PLAY = "to_play"
+
+        /** Outputs only the listener hears, so a take being recorded doesn't pick the sound up. */
+        private val PRIVATE_OUTPUTS = setOf(
+            AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_BLE_HEADSET,
+        )
+
         private const val TICK_MS = 200L
         private const val REFRESH_DEBOUNCE_MS = 300L
         private const val MENU_SHARE = 1
@@ -465,16 +528,29 @@ class RecordingsActivity : AppCompatActivity() {
 }
 
 /**
- * What the recordings screen keeps while Android recreates it (the phone turned, the window
- * resized): the player, so a recording plays on, and the lengths read so far. Its audio focus
- * request lives here too, since a loss of focus pauses this player whichever screen is showing.
+ * The lengths of recordings read so far, by path, while the file's size and time stay the same:
+ * kept for as long as the app runs, so opening Recordings again doesn't measure every file again.
+ * The main thread's only.
  */
-class RecordingsModel(app: Application) : AndroidViewModel(app) {
-
+object RecordingLengths {
     data class Measured(val size: Long, val modified: Long, val ms: Long?)
 
-    /** Lengths read so far, by path, kept while the file's size and time stay the same. */
-    val lengths = HashMap<String, Measured>()
+    private val known = HashMap<String, Measured>()
+
+    fun get(file: File, size: Long, modified: Long): Measured? =
+        known[file.path]?.takeIf { it.size == size && it.modified == modified }
+
+    fun put(file: File, size: Long, modified: Long, ms: Long?) {
+        known[file.path] = Measured(size, modified, ms)
+    }
+}
+
+/**
+ * What the recordings screen keeps while Android recreates it (the phone turned, the window
+ * resized): the player, so a recording plays on. Its audio focus request lives here too, since a
+ * loss of focus pauses this player whichever screen is showing.
+ */
+class RecordingsModel(app: Application) : AndroidViewModel(app) {
 
     /** The screen showing the player now, told of every change; null between two screens. */
     var onChange: (() -> Unit)? = null
@@ -482,12 +558,7 @@ class RecordingsModel(app: Application) : AndroidViewModel(app) {
     private val audioManager = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val focusRequest: AudioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
-        )
+        .setAudioAttributes(MediaPlayerOutput.ATTRIBUTES)
         .setOnAudioFocusChangeListener { change ->
             // Another app's sound (a call, navigation): this is a recording being checked, not
             // music to duck under it, so it pauses, and the user resumes it.

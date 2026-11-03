@@ -14,8 +14,8 @@ android {
         // Single source of truth for the version. Bump on every change (see CLAUDE.md):
         // versionName is the semver shown to users and used for the GitHub release tag,
         // versionCode must strictly increase or Android refuses the update.
-        versionCode = 31
-        versionName = "0.14.0"
+        versionCode = 32
+        versionName = "0.14.1"
     }
 
     // F-Droid: no Google-encrypted dependency list in the APK signing block (F-Droid's

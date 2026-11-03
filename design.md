@@ -358,9 +358,14 @@ audio could vanish over a read error in its last second.
 ## Recordings and the player
 
 `RecordingsActivity` lists the save folder (`RecordingFiles.list`: audio extensions, newest
-first) and reads each recording's length, one at a time, on one background thread, so a slow card
-never holds up the screen; each listing is numbered and an older one finishing late is dropped.
-Lengths are cached by path, size and time. A WAV's comes from its header
+first, each file's size and time read once and sorted on, hidden files left out, since MediaStore's
+trash and unfinished writes are `.trashed-…` and `.pending-…` files beside the recordings) and reads
+each recording's length, one at a time, on one background thread, so a slow card never holds up
+the screen. Each listing is numbered: an older one finishing late is dropped, and the lengths it
+queued are skipped once a newer listing is asked for, so a listing after a delete or a rename
+doesn't wait behind them. Lengths are cached by path, size and time for as long as the app runs
+(`RecordingLengths`), so opening the screen again doesn't measure every file again. A WAV's comes
+from its header
 (`WavLayout`), which a take cut off by the app being killed still has, its sizes still the
 0xFFFFFFFF written at the start: read as "to the end of the file", in whole frames, which is what
 ffmpeg and libsndfile do with it. Anything else is asked of `MediaMetadataRetriever`, and a file it can't
@@ -368,9 +373,13 @@ read shows "?". A `FileObserver` on the folder lists it again 300 ms after the l
 the screen is started.
 
 - **The player outlives the screen's recreation.** `RecordingsModel`, an `AndroidViewModel`, holds
-  the `PlayerController`, its audio-focus request and the lengths, so turning the phone doesn't
-  stop a recording mid-play. The screen pauses it in `onStop` unless it is only being recreated
-  (`isChangingConfigurations`): playing on with the screen gone would leave no way to stop it.
+  the `PlayerController` and its audio-focus request, so turning the phone doesn't stop a
+  recording mid-play. The screen pauses it in `onStop` unless it is only being recreated
+  (`isChangingConfigurations`): playing on with the screen gone would leave no way to stop it. A
+  recording still opening then is kept from starting (a pause while it opens clears
+  `PlayerController`'s play-when-ready, and the play button shows "pause" for one about to play),
+  and "Play" from the "Saved" message waits for the screen to be started, and survives its
+  recreation.
 - **The rules are on the JVM.** `PlayerController` drives an `AudioOutput` (MediaPlayer on a
   phone, a fake in `PlayerControllerTest`): play once open, pause and resume, the end showing the
   full length with Play starting again from the beginning, an error kept with the file still named
@@ -383,11 +392,20 @@ the screen is started.
 - **Renaming and deleting.** `MediaPlayer` is given the file's descriptor and keeps its own
   duplicate, so a rename doesn't interrupt playing, and `PlayerController.renamed` follows it. A
   delete first lets go of the file (`release`). Renames keep the extension, refuse a name that
-  exists (a change of case alone is a rename, on a card that ignores case too) and use the record
-  dialog's character rules (`RecordingFiles.ILLEGAL_FILENAME_CHARS`, shared with it).
-- **The take being recorded is left alone.** `RecordingService.activeFile` mirrors the service's
+  another file has (`Files.isSameFile`: on storage that ignores case, the new case of this file's
+  own name is the same file) or that starts with a dot (the file would be hidden, and leave the
+  list), and use the record dialog's character rules (`RecordingFiles.ILLEGAL_FILENAME_CHARS`,
+  shared with it). A change of case alone goes through a temporary name (`RecordingFiles.rename`):
+  on shared storage, which ignores case, renaming straight to it succeeds and changes nothing
+  (measured on the emulator), and a rename only counts once the folder lists the new name.
+- **The take being recorded is left alone.** `RecordingService.activeFile` is the service's
   current file, so the screen, which doesn't bind to the service, shows it as "Recording…" and
-  won't play, measure, rename, share or delete it.
+  won't play, measure, rename, share or delete it. Playing anything else aloud while it records
+  asks first, unless headphones (wired, USB or Bluetooth) are attached: from the speaker, the
+  microphone would record it into the take.
+- **Seeking.** A drag seeks when let go; a key or TalkBack's adjust action moves the bar without a
+  drag and seeks at once. A bar disabled mid-drag never reports the drag's end, so disabling it
+  ends the drag, or the position would stay frozen after.
 - **A cut-off WAV plays through a corrected header.** Android's `MediaPlayer` refuses a WAV whose
   sizes are unknown ("damaged", measured on the API 36 emulator), so `MediaPlayerOutput` gives it
   one through a `MediaDataSource` over a `WavView`: the file as it reads had the take finished,
@@ -407,7 +425,8 @@ per-format encoder mimes and the bytes/second estimate, and `PartialRecordingTes
 take that doesn't end cleanly leaves on disk (`endTake`, and the WAV header before and after
 `finish()`; `WavPcmEncoder` is plain `java.io`, so it runs there for real), `RecordingFilesTest`
 for the recordings list, the rename rules and a WAV's length (finished, cut off, and claiming more
-than is there), and `PlayerControllerTest` for the player's rules over a fake output; `RecordingFilesTest` also
+than is there), and `PlayerControllerTest` for the player's rules over a fake output (a pause while it opens
+keeping it from starting among them); `RecordingFilesTest` also
 reads a cut-off WAV through its `WavView` and compares it with the same audio finished. Anything worth testing
 should be factored into a pure function like these rather than tested through Android classes.
 

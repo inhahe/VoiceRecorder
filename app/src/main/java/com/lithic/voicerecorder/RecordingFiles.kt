@@ -1,6 +1,8 @@
 package com.lithic.voicerecorder
 
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
 import java.util.Locale
 
 /**
@@ -15,11 +17,20 @@ object RecordingFiles {
     /** Characters no file name may hold (FAT and exFAT cards refuse them, and `/` is the separator). */
     val ILLEGAL_FILENAME_CHARS = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
 
-    /** The audio files directly in [dir], newest first (then by name); empty when it can't be read. */
-    fun list(dir: File): List<File> =
+    /** A recording as it was when listed: its size and time are read once, then sorted on. */
+    data class Listed(val file: File, val size: Long, val modified: Long)
+
+    /**
+     * The audio files directly in [dir], newest first (then by name); empty when it can't be read.
+     * Hidden files are left out: MediaStore's trash and unfinished writes are `.trashed-…` and
+     * `.pending-…` files beside the recordings. Each file is looked at once, so a file changing
+     * while the list is sorted can't make the order contradict itself.
+     */
+    fun list(dir: File): List<Listed> =
         (dir.listFiles() ?: emptyArray())
-            .filter { it.isFile && it.extension.lowercase(Locale.ROOT) in AUDIO_EXTENSIONS }
-            .sortedWith(compareByDescending<File> { it.lastModified() }.thenBy { it.name.lowercase(Locale.ROOT) })
+            .filter { !it.name.startsWith(".") && it.extension.lowercase(Locale.ROOT) in AUDIO_EXTENSIONS && it.isFile }
+            .map { Listed(it, it.length(), it.lastModified()) }
+            .sortedWith(compareByDescending<Listed> { it.modified }.thenBy { it.file.name.lowercase(Locale.ROOT) })
 
     /** What renaming a recording would do. */
     sealed interface Rename {
@@ -33,23 +44,52 @@ object RecordingFiles {
         data class Refused(val why: Problem) : Rename
     }
 
-    enum class Problem { EMPTY, ILLEGAL, EXISTS }
+    enum class Problem { EMPTY, ILLEGAL, HIDDEN, EXISTS }
 
     /**
      * Where renaming [file] to [newBase] would put it, its extension kept, or why it can't go
-     * there: no name, a character no file name may hold, or a file already of that name (never
-     * overwritten). A change of case alone is a rename, though on a card that ignores case the
-     * new name "exists" already: it is this file.
+     * there: no name, a character no file name may hold, a leading dot (the file would be hidden,
+     * and leave the list), or another file already of that name (never overwritten). A change of
+     * case alone is a rename: on a card that ignores case the new name "exists" already, but as
+     * this same file; in a folder that minds case it may be another file, which is refused.
      */
     fun renameTarget(file: File, newBase: String): Rename {
         val base = newBase.trim()
         if (base.isEmpty()) return Rename.Refused(Problem.EMPTY)
         if (base.any { it in ILLEGAL_FILENAME_CHARS } || base == "." || base == "..") return Rename.Refused(Problem.ILLEGAL)
+        if (base.startsWith(".")) return Rename.Refused(Problem.HIDDEN)
         val name = if (file.extension.isEmpty()) base else "$base.${file.extension}"
         if (name == file.name) return Rename.Unchanged
         val target = File(file.parentFile, name)
-        if (!name.equals(file.name, ignoreCase = true) && target.exists()) return Rename.Refused(Problem.EXISTS)
+        if (target.exists() && !sameFile(file, target)) return Rename.Refused(Problem.EXISTS)
         return Rename.To(target)
+    }
+
+    private fun sameFile(a: File, b: File): Boolean = try {
+        Files.isSameFile(a.toPath(), b.toPath())
+    } catch (e: IOException) {
+        false
+    }
+
+    /**
+     * Renames [file] to [target] (from [renameTarget]); true once the folder lists it under the
+     * new name. A change of case alone goes through a temporary name: on Android's shared storage,
+     * which ignores case, renaming straight to the same name in another case succeeds and changes
+     * nothing.
+     */
+    fun rename(file: File, target: File): Boolean {
+        val dir = file.parentFile ?: return false
+        if (target.name.equals(file.name, ignoreCase = true)) {
+            val step = File(dir, ".renaming-" + System.nanoTime() + "-" + target.name)
+            if (!file.renameTo(step)) return false
+            if (!step.renameTo(target)) {
+                step.renameTo(file) // back as it was
+                return false
+            }
+        } else if (!file.renameTo(target)) {
+            return false
+        }
+        return dir.list()?.contains(target.name) == true
     }
 
     /**

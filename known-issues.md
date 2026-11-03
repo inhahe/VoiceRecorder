@@ -158,8 +158,9 @@ results*). Before 0.13.2 they came back looking normal but did nothing when conf
 
 The other dialogs are plain `AlertDialog`s and simply disappear instead. That covers the Input
 picker, the "Input not connected" prompt, the recent-names list and the rate/bitrate pickers inside
-the record dialog, the Settings pickers, and the recordings screen's Rename and Delete questions
-(a name half typed is lost; nothing is renamed or deleted). Nothing is silently lost, because the user just sees
+the record dialog, the Settings pickers, and the recordings screen's Rename, Delete and "A
+recording is being made" questions (a name half typed is lost; nothing is renamed, deleted or
+played). Nothing is silently lost, because the user just sees
 the screen without the dialog and opens it again. The mid-recording "Input disconnected" prompt is
 raised again by itself.
 

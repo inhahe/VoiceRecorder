@@ -1,0 +1,1 @@
+Recordings: a recording opened just before you leave the screen no longer starts playing in the background; renaming a recording to a different case of its name works; playing one aloud during a recording asks first; seeking works from the keyboard and TalkBack; trashed files are no longer listed; lengths stay known when you come back; landscape keeps clear of the camera cutout.

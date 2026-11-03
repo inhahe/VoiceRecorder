@@ -143,7 +143,6 @@
 
     <!-- Recordings screen and its player -->
     <string name="recordings">Recordings</string>
-    <string name="recordings_title">Recordings</string>
     <string name="play">Play</string>
     <plurals name="recordings_summary">
         <item quantity="one">%1$d recording · %2$s</item>
@@ -174,5 +173,9 @@
     <string name="player_playing">Playing</string>
     <string name="player_paused">Paused in the player</string>
     <string name="player_cant_open">Can\'t play %1$s: %2$s</string>
+    <string name="recording_rename_hidden">A name can\'t start with a dot: the file would be hidden</string>
+    <string name="recording_while_recording_title">A recording is being made</string>
+    <string name="recording_while_recording_message">Played through the speaker now, %1$s would be recorded into it too. Plug in headphones to listen without that.</string>
+    <string name="recording_play_anyway">Play anyway</string>
     <string name="player_cant_play">Can\'t play %1$s: it is damaged, or in a format this phone doesn\'t play</string>
 </resources>
