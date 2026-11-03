@@ -279,9 +279,10 @@ class MediaCodecPcmEncoder(
 
     /**
      * Moves whatever the codec has encoded into the muxer. While recording ([endOfStream] false) it
-     * takes only what is ready and returns: waiting there would hold up the capture thread for every
-     * buffer it encodes (half of each 20 ms read, at a 10 ms wait), and a thread that late leaves
-     * AudioRecord's buffer to overflow. Only at the end of the stream does it wait, for the rest.
+     * takes only what is ready and returns, rather than waiting up to [TIMEOUT_US] for more after
+     * every buffer: the capture thread's time is better spent reading. (Feeding the codec can still
+     * wait for a free input buffer, when it falls behind.) Only at the end of the stream does it
+     * wait, for the rest.
      */
     private fun drainOutput(endOfStream: Boolean) {
         val c = codec ?: return

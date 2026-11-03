@@ -63,7 +63,12 @@ class CaptureLoopTest {
         assertEquals(882 * 2, CaptureLoop.readBytes(44100, 1, 16384))   // 20 ms of mono
         assertEquals(960 * 4, CaptureLoop.readBytes(48000, 2, 32768))   // 20 ms of stereo
         assertEquals(1000 * 4, CaptureLoop.readBytes(96000, 2, 4002))   // capped by a small buffer, whole frames
-        assertEquals(4, CaptureLoop.readBytes(8000, 2, 2))              // never less than a frame
+    }
+
+    /** A buffer too small for one frame is a caller's mistake, not a read of nothing. */
+    @Test(expected = IllegalArgumentException::class)
+    fun aBufferWithoutAFrameIsRefused() {
+        CaptureLoop.readBytes(8000, 2, 2)
     }
 
     /** A read that returns nothing is neither audio nor an error: the loop just reads again. */

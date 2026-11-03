@@ -1,6 +1,5 @@
 package com.lithic.voicerecorder
 
-import kotlin.math.max
 import kotlin.math.min
 
 /**
@@ -49,15 +48,17 @@ internal class CaptureLoop(
         /**
          * Bytes to ask `AudioRecord` for at a time: one spectrum hop (1/[SpectrumAnalyzer.UPDATES_PER_SECOND]
          * s) of [channels]-channel 16-bit audio at [sampleRate], whole frames, and no more than
-         * [bufferBytes], the buffer `AudioRecord` was given. Reading a whole buffer at a time instead
-         * (160 ms on some phones) hands the meter a burst of analyses at once, so it moves in steps;
-         * a hop at a time, it moves as the audio arrives. `AudioRecord` keeps its whole buffer either
-         * way, so a late read loses nothing.
+         * [bufferBytes], the buffer `AudioRecord` was given, which must hold a frame. Reading a whole
+         * buffer at a time instead (160 ms on some phones) hands the meter a burst of analyses at
+         * once, so it moves in steps; a hop at a time, it moves as the audio arrives. `AudioRecord`
+         * keeps its whole buffer either way, so a late read loses nothing.
          */
         fun readBytes(sampleRate: Int, channels: Int, bufferBytes: Int): Int {
             val frameBytes = 2 * channels
+            // A read of no frames would return nothing for ever.
+            require(bufferBytes >= frameBytes) { "A $bufferBytes-byte buffer holds no $frameBytes-byte frame" }
             val hop = SpectrumAnalyzer.hopFor(sampleRate) * frameBytes
-            return max(frameBytes, min(hop, bufferBytes / frameBytes * frameBytes))
+            return min(hop, bufferBytes / frameBytes * frameBytes)
         }
     }
 }

@@ -24,9 +24,10 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
   `CaptureLoop.readBytes`) from an `AudioRecord` buffer of twice the device's minimum: reading the
   whole buffer at once (160 ms on some phones) handed the meter its analyses in bursts, so it moved
   in steps. `AudioRecord` keeps the whole buffer either way, so a late read loses nothing, and both
-  encoders take chunks of any size. The MediaCodec encoder takes only what output is ready while
-  recording, never waiting for more: a wait per 20 ms read (it was 10 ms) would hold the capture
-  thread up for half its time, and a thread that late lets `AudioRecord`'s buffer overflow.
+  encoders take chunks of any size. The MediaCodec encoder takes only the output that is ready
+  while recording, rather than waiting up to 10 ms for more after every read, so the capture
+  thread spends its time reading. Feeding the codec can still wait for a free input buffer, when
+  the codec falls behind.
 - **The analyzer belongs to the capture thread,** which pushes to it and also clears it when it
   sees a pause (`CaptureLoop`, the loop apart from `AudioRecord`, so that is tested on the JVM);
   only `takeBands` is called elsewhere. Cleared from the main thread, a buffer the capture thread
@@ -43,8 +44,14 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
   now rather than at the oldest of them. Only rises of the last half second count (each band
   keeps its rise per analysis in a ring of the last half second's, so a lower rise behind a higher
   one survives the higher one ageing out), so the screen coming back on doesn't flash a sound long
-  past. The view raises a bar at once and eases it down, so a click is drawn at its full height
-  rather than eased towards it. After a reset the window starts as silence and the analyses run on
+  past. The view raises a bar at once and eases it down (`BarMotion`, timed rather than per frame,
+  so it falls as fast on a 120 Hz screen as on a 60 Hz one), so a click is drawn at its full height
+  rather than eased towards it. It reads from a `Choreographer` frame callback, which runs only
+  while the meter is active and visible (`onVisibilityAggregated`: not in the background), and
+  redraws only when a bar moved, so a paused or settled meter draws nothing; the reads go into the
+  view's own array (`takeBandsInto`), not a new one each frame. The 50 ms UI tick likewise sets the
+  timer's text only when it changes: a `TextView` relays itself out on every set, which redrew the
+  screen 20 times a second for a timer that changes once. After a reset the window starts as silence and the analyses run on
   the usual grid from the first hop, so the first moments after Record or Resume count as much as
   any. The rate comes with every `push`, and a new one starts the meter afresh.
 - **Service owns the recording, Activity owns the UI.** The Activity can die/rebind; recording state

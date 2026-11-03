@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.TextUtils
 import android.view.LayoutInflater
 import android.widget.TextView
 import android.widget.Toast
@@ -98,7 +99,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         binding.root.padBelowActionBar()
         // Read on every frame while recording; the service is whichever is bound at the time.
-        binding.spectrumView.source = { service?.takeSpectrum() }
+        binding.spectrumView.source = { out -> service?.takeSpectrum(out) ?: false }
         settings = Settings(this)
         inputValueColors = binding.inputValue.textColors
 
@@ -193,9 +194,9 @@ class MainActivity : AppCompatActivity() {
         val wanted = settings.inputDeviceKey
         val matched = wanted.isEmpty() ||
             InputDevices.match(InputDevices.options(this), wanted)?.label == routed
-        binding.inputRouted.text = getString(
+        binding.inputRouted.setTextIfChanged(getString(
             if (matched) R.string.input_routed else R.string.input_routed_mismatch, routed
-        )
+        ))
         binding.inputRouted.visibility = android.view.View.VISIBLE
     }
 
@@ -327,7 +328,8 @@ class MainActivity : AppCompatActivity() {
             .create()
         dialog.setOnDismissListener {
             if (inputPrompt !== dialog) return@setOnDismissListener // replaced, or closed by us
-            // The user said no: Cancel / Stay paused, back, or a tap outside.
+            // The user said no: Cancel, back, or a tap outside. (Stay paused ends the wait for the
+            // input itself, so refreshUi has closed the prompt by the time this runs.)
             if (inputPromptReason == InputPrompt.DURING_RECORDING) inputPromptDeclined = true
             inputPrompt = null
             inputPromptReason = null
@@ -681,18 +683,24 @@ class MainActivity : AppCompatActivity() {
     private fun audioManager(): AudioManager =
         getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-
     private fun updateTimer() {
         val ms = service?.elapsedMillis() ?: 0L
         val totalSec = ms / 1000
         val h = totalSec / 3600
         val m = (totalSec % 3600) / 60
         val s = totalSec % 60
-        binding.timerText.text = if (h > 0) {
-            String.format(Locale.US, "%d:%02d:%02d", h, m, s)
-        } else {
-            String.format(Locale.US, "%02d:%02d", m, s)
-        }
+        binding.timerText.setTextIfChanged(
+            if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+            else String.format(Locale.US, "%02d:%02d", m, s)
+        )
+    }
+
+    /**
+     * For text polled on every tick: a TextView lays itself out and redraws whenever its text is
+     * set, changed or not, so setting the timer every 50 ms redrew the screen 20 times a second.
+     */
+    private fun TextView.setTextIfChanged(value: CharSequence) {
+        if (!TextUtils.equals(text, value)) text = value
     }
 
 }

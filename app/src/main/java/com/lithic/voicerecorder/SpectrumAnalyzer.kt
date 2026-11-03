@@ -24,7 +24,7 @@ import kotlin.math.sqrt
  * rise since the previous read, so a click reaches its full height however many analyses one
  * buffer holds, while a falling bar is never held back.
  */
-class SpectrumAnalyzer(private val bandCount: Int = 40) {
+class SpectrumAnalyzer(val bandCount: Int = BANDS) {
 
     /** Everything that depends on the sample rate, built once per rate and replaced whole. */
     private class Geometry(val sampleRate: Int, bandCount: Int) {
@@ -159,16 +159,21 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
      * and showing it now would flash a sound long past. Meant for one reader, which would
      * otherwise take the other's rises.
      */
-    fun takeBands(): FloatArray = synchronized(lock) {
-        // The analyses since the previous call, as far as the last RISE_HOLD of them reach.
-        val from = max(takenAt, analyses - RISE_HOLD) + 1
-        val bands = FloatArray(bandCount) { b ->
-            var shown = smoothed[b]
-            for (a in from..analyses) shown = max(shown, recentRises[b][(a % RISE_HOLD).toInt()])
-            shown
+    fun takeBands(): FloatArray = FloatArray(bandCount).also { takeBandsInto(it) }
+
+    /** [takeBands] into the first [bandCount] entries of [out], for a reader that polls every frame. */
+    fun takeBandsInto(out: FloatArray) {
+        require(out.size >= bandCount) { "${out.size} entries for $bandCount bands" }
+        synchronized(lock) {
+            // The analyses since the previous call, as far as the last RISE_HOLD of them reach.
+            val from = max(takenAt, analyses - RISE_HOLD) + 1
+            for (b in 0 until bandCount) {
+                var shown = smoothed[b]
+                for (a in from..analyses) shown = max(shown, recentRises[b][(a % RISE_HOLD).toInt()])
+                out[b] = shown
+            }
+            takenAt = analyses
         }
-        takenAt = analyses
-        bands
     }
 
     /** Clear the meter. Call it from the thread that pushes, or once that thread has stopped. */
@@ -188,6 +193,9 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
     }
 
     companion object {
+        /** The bars the recording meter shows. */
+        const val BANDS = 40
+
         /** Analyses per second of audio. */
         internal const val UPDATES_PER_SECOND = 50
 
@@ -199,7 +207,7 @@ class SpectrumAnalyzer(private val bandCount: Int = 40) {
         internal const val WINDOW_SECONDS = 2048.0 / 48000
 
         /** How long, in analyses, a rise waits to be read before it is dropped: half a second. */
-        private const val RISE_HOLD = UPDATES_PER_SECOND / 2
+        internal const val RISE_HOLD = UPDATES_PER_SECOND / 2
 
         internal fun windowLengthFor(rate: Int): Int = (rate * WINDOW_SECONDS).roundToInt()
 

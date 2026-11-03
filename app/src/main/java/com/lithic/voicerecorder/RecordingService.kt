@@ -43,11 +43,16 @@ class RecordingService : Service() {
     private val analyzer = SpectrumAnalyzer()
 
     /**
-     * The recording meter's 0..1 frequency bands, or empty when idle. Takes what rose since the
-     * previous call (see [SpectrumAnalyzer.takeBands]), so it is for the one screen that draws
-     * them: a second caller would take the first one's rises.
+     * Fills [out] with the recording meter's 0..1 frequency bands ([SpectrumAnalyzer.BANDS] of
+     * them); false, leaving it alone, when idle. Takes what rose since the previous call (see
+     * [SpectrumAnalyzer.takeBands]), so it is for the one screen that draws them: a second caller
+     * would take the first one's rises.
      */
-    fun takeSpectrum(): FloatArray = if (isRecording) analyzer.takeBands() else EMPTY_SPECTRUM
+    fun takeSpectrum(out: FloatArray): Boolean {
+        if (!isRecording) return false
+        analyzer.takeBandsInto(out)
+        return true
+    }
 
     /**
      * Digital input gain in dB, applied to everything captured from here on. Setting it while a
@@ -416,7 +421,6 @@ class RecordingService : Service() {
     companion object {
         private const val CHANNEL_ID = "recording"
         private const val NOTIFICATION_ID = 1001
-        private val EMPTY_SPECTRUM = FloatArray(0)
 
         /** How long the CLIP indicator stays lit after the last clipped sample. */
         private const val CLIP_HOLD_MS = 1200L

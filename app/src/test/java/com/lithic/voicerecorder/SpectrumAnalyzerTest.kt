@@ -242,12 +242,13 @@ class SpectrumAnalyzerTest {
         fun push(pcm: ByteArray) = analyzer.push(pcm, pcm.size, channels = 1, sampleRate = sampleRate)
         push(sinePcm(3000.0, 4 * hop))                 // loud
         push(ByteArray(12 * hop * 2))                  // falls below what the quieter sound reads
+        val beforeQuiet = analyzer.analyses            // the quieter rise comes after this one
         push(sinePcm(3000.0, 4 * hop, amp = 0.1))      // a quieter sound (-20 dB) lifts it again
-        val afterQuiet = analyzer.analyses
         push(ByteArray(14 * hop * 2))                  // nobody reads: the loud rise ages out first
         val shown = analyzer.takeBands().maxOrNull() ?: 0f
         val latest = analyzer.takeBands().maxOrNull() ?: 0f // rises taken: just the latest now
-        assertTrue("the read came within half a second of the quieter rise", analyzer.analyses - afterQuiet < 25)
+        assertTrue("the read came within half a second of the quieter rise",
+            analyzer.analyses - beforeQuiet <= SpectrumAnalyzer.RISE_HOLD)
         assertTrue("the quieter sound's rise was lost: shown $shown, latest $latest", shown > latest + 0.1f)
     }
 
