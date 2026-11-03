@@ -83,6 +83,46 @@ class RecordingFilesTest {
     }
 
     @Test
+    fun a_deleted_recording_waits_in_the_trash_and_comes_back() {
+        val take = file("Take.wav")
+        val trashed = RecordingFiles.trash(take, now = 5_000)!!
+        assertEquals(emptyList<String>(), RecordingFiles.list(tmp.root).map { it.file.name }) // no longer listed
+        val item = RecordingFiles.trashed(tmp.root).single()
+        assertEquals("Take.wav", item.name)
+        assertEquals(5_000L, item.deletedAt)
+        assertEquals(trashed, item.file)
+
+        assertEquals(File(tmp.root, "Take.wav"), RecordingFiles.restore(item, tmp.root))
+        assertEquals(listOf("Take.wav"), RecordingFiles.list(tmp.root).map { it.file.name })
+        assertEquals(emptyList<RecordingFiles.Trashed>(), RecordingFiles.trashed(tmp.root))
+    }
+
+    /** A new recording took the name meanwhile: the old one comes back beside it, never over it. */
+    @Test
+    fun a_restored_recording_never_overwrites() {
+        RecordingFiles.trash(file("Take.wav"), now = 5_000)
+        file("Take.wav")
+        val back = RecordingFiles.restore(RecordingFiles.trashed(tmp.root).single(), tmp.root)
+        assertEquals(File(tmp.root, "Take_2.wav"), back)
+    }
+
+    @Test
+    fun the_same_name_deleted_twice_keeps_both() {
+        RecordingFiles.trash(file("Take.wav"), now = 5_000)
+        RecordingFiles.trash(file("Take.wav"), now = 5_000)
+        assertEquals(2, RecordingFiles.trashed(tmp.root).size)
+    }
+
+    @Test
+    fun the_trash_lets_go_after_thirty_days() {
+        val day = 24L * 60 * 60 * 1000
+        RecordingFiles.trash(file("Old.wav"), now = 0)
+        RecordingFiles.trash(file("New.wav"), now = 25 * day)
+        RecordingFiles.purgeTrash(tmp.root, now = 31 * day)
+        assertEquals(listOf("New.wav"), RecordingFiles.trashed(tmp.root).map { it.name })
+    }
+
+    @Test
     fun the_recording_timer_pads_its_minutes() {
         assertEquals("00:05", RecordingFiles.clock(5_000, padMinutes = true))
         assertEquals("1:00:05", RecordingFiles.clock(3_605_000, padMinutes = true))

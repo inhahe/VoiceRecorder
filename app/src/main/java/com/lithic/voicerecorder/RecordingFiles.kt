@@ -104,6 +104,63 @@ object RecordingFiles {
         }
     }
 
+    /** Where deleted recordings wait, inside the folder they were in: hidden, so neither this list nor media apps show them. */
+    const val TRASH_FOLDER = ".trash"
+
+    /** How long a deleted recording is kept before it goes for good. */
+    const val TRASH_KEEP_MS = 30L * 24 * 60 * 60 * 1000
+
+    /** A deleted recording: [name] is what it was called, [deletedAt] when (ms since 1970). */
+    data class Trashed(val file: File, val name: String, val deletedAt: Long, val size: Long)
+
+    /**
+     * Moves [file] into its folder's trash, as `<now>-<name>`, so it can be restored; the moved
+     * file, or null if it couldn't be moved. A move within the folder's volume: nothing is copied.
+     */
+    fun trash(file: File, now: Long): File? {
+        val dir = File(file.parentFile ?: return null, TRASH_FOLDER)
+        if (!dir.isDirectory && !dir.mkdirs()) return null
+        var at = now
+        var target: File
+        do {
+            target = File(dir, "$at-${file.name}")
+            at++
+        } while (target.exists())
+        return if (file.renameTo(target)) target else null
+    }
+
+    /** What [folder]'s trash holds, the most recently deleted first. */
+    fun trashed(folder: File): List<Trashed> =
+        (File(folder, TRASH_FOLDER).listFiles() ?: emptyArray())
+            .filter { it.isFile }
+            .mapNotNull { f ->
+                val dash = f.name.indexOf('-')
+                val at = if (dash > 0) f.name.substring(0, dash).toLongOrNull() else null
+                at?.let { Trashed(f, f.name.substring(dash + 1), it, f.length()) }
+            }
+            .sortedByDescending { it.deletedAt }
+
+    /**
+     * Puts [item] back in [folder] under its old name, or with `_2`, `_3`, … if that name has been
+     * taken since: never over another file. The restored file, or null if it couldn't be moved.
+     */
+    fun restore(item: Trashed, folder: File): File? {
+        val dot = item.name.lastIndexOf('.')
+        val name = if (dot > 0) {
+            StorageUtil.nextAvailableName(item.name.substring(0, dot), item.name.substring(dot + 1)) { File(folder, it).exists() }
+        } else {
+            item.name
+        }
+        val target = File(folder, name)
+        if (target.exists()) return null
+        return if (item.file.renameTo(target)) target else null
+    }
+
+    /** Deletes for good what [folder]'s trash has held for longer than [TRASH_KEEP_MS]. */
+    fun purgeTrash(folder: File, now: Long) {
+        for (item in trashed(folder)) if (now - item.deletedAt > TRASH_KEEP_MS) item.file.delete()
+    }
+
     /**
      * The length of a WAV in milliseconds, from its header ([WavLayout]: a take cut off before it
      * finished counts to the end of the file); null if it isn't a PCM WAV this can read.

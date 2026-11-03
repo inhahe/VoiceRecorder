@@ -177,12 +177,16 @@ one to look at on a phone.
 On the home screen, **Change folder** (two lines of text beside its icon) stands taller than
 **Settings** beside it.
 
-## Deleting a recording is for good
+## Recently deleted is the app's own, not Android's trash
 
-The recordings screen deletes with `File.delete()`, after asking. Android 11 and later have a trash
-(`MediaStore.createTrashRequest`), but only for files MediaStore knows by URI, and every request
-shows a system dialog of its own; the app reaches its files through "All files access" instead, in
-any folder. A recording deleted by mistake can't be got back from the app.
+Deleting moves a recording into a hidden `.trash` folder beside it, where it waits 30 days
+(design.md, *Recently deleted*). Android 11 and later have a trash of their own
+(`MediaStore.createTrashRequest`), which Files apps show, but only for files MediaStore knows by
+URI, and every request shows a system dialog; the app reaches its files through "All files
+access" instead, in any folder, SD cards included. So a deleted recording is found under
+**Recently deleted** in this app, not in a Files app's trash. The 30 days are counted when the app
+lists the folder: a recording deleted and never looked at again stays until the app is next opened
+on that folder.
 
 ## Not yet implemented (possible future work)
 - A level meter during playback: the player shows the spectrum of what is playing, but not the

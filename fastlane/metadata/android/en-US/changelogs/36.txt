@@ -1,0 +1,1 @@
+Deleting a recording no longer asks first: it goes to Recently deleted, with an Undo, and waits there 30 days in case you want it back. Find it in the Recordings screen's menu, to restore it or delete it for good.

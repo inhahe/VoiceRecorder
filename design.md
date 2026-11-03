@@ -438,6 +438,13 @@ the screen is started.
   overlays just the two size fields, so a large chunk before the data costs nothing. The file
   itself isn't changed.
   A WAV whose sizes are right is played by descriptor as before.
+- **Recently deleted.** Delete moves the recording into a hidden `.trash` folder inside its own
+  (`RecordingFiles.trash`), named `<time deleted>-<name>`: a rename on the same volume, nothing
+  copied, and hidden, so neither this list nor media apps show it. A Snackbar offers Undo, so
+  nothing is asked first. The screen's menu lists what is there (most recent first) to restore,
+  under its old name or with `_2` if that has been taken since, never over another file, or to
+  delete for good, one or all. Each listing deletes what has waited more than 30 days
+  (`purgeTrash`).
 - **Share** goes through a `FileProvider` (`res/xml/file_paths.xml`): shared storage is an
   `external-path`, and a folder on an SD card, outside it under `/storage`, a `root-path`.
 

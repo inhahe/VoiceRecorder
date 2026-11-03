@@ -17,6 +17,8 @@ import android.os.FileObserver
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -34,6 +36,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.snackbar.Snackbar
 import com.lithic.voicerecorder.databinding.ActivityRecordingsBinding
 import com.lithic.voicerecorder.databinding.ItemRecordingBinding
 import java.io.File
@@ -165,6 +168,17 @@ class RecordingsActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(0, MENU_TRASH, 0, R.string.trash_title)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId != MENU_TRASH) return super.onOptionsItemSelected(item)
+        showTrash()
+        return true
+    }
+
     // --- the list -------------------------------------------------------------
 
     /** Follows [dir] while the screen is open: a file added, removed or renamed lists it again. */
@@ -210,6 +224,7 @@ class RecordingsActivity : AppCompatActivity() {
         val id = ++listing
         inBackground {
             RecordingFiles.finishRenames(dir)
+            RecordingFiles.purgeTrash(dir, System.currentTimeMillis())
             val files = RecordingFiles.list(dir)
             main.post {
                 if (id != listing || isDestroyed) return@post
@@ -325,7 +340,7 @@ class RecordingsActivity : AppCompatActivity() {
                 when (it.itemId) {
                     MENU_SHARE -> share(row.file)
                     MENU_RENAME -> askRename(row.file)
-                    MENU_DELETE -> askDelete(row.file)
+                    MENU_DELETE -> delete(row.file)
                 }
                 true
             }
@@ -398,18 +413,80 @@ class RecordingsActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun askDelete(file: File) {
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.recording_delete_title, file.name))
-            .setMessage(R.string.recording_delete_message)
-            .setPositiveButton(R.string.recording_delete) { _, _ ->
-                if (file == RecordingService.activeFile) return@setPositiveButton
-                player.release(file) // nothing plays on from a file that is gone
-                if (!file.delete() && file.exists()) {
-                    Toast.makeText(this, getString(R.string.recording_delete_failed, file.name), Toast.LENGTH_LONG).show()
+    /**
+     * Moves [file] to Recently deleted, at once and with an Undo: it can be restored from there
+     * for 30 days, so there is nothing to ask first.
+     */
+    private fun delete(file: File) {
+        if (file == RecordingService.activeFile) return
+        player.release(file) // nothing plays on from a file that is gone
+        val trashed = RecordingFiles.trash(file, System.currentTimeMillis())
+        refresh()
+        if (trashed == null) {
+            Toast.makeText(this, getString(R.string.recording_delete_failed, file.name), Toast.LENGTH_LONG).show()
+            return
+        }
+        Snackbar.make(binding.root, getString(R.string.recording_deleted, file.name), Snackbar.LENGTH_LONG)
+            .setAction(R.string.undo) {
+                val item = RecordingFiles.trashed(file.parentFile ?: return@setAction).firstOrNull { it.file == trashed }
+                if (item == null || RecordingFiles.restore(item, file.parentFile!!) == null) {
+                    Toast.makeText(this, getString(R.string.trash_restore_failed, file.name), Toast.LENGTH_LONG).show()
                 }
                 refresh()
             }
+            .show()
+    }
+
+    /** Recently deleted: restore a recording, delete one for good, or empty the lot. */
+    private fun showTrash() {
+        val dir = folder ?: settings.saveDirectoryFile()
+        inBackground {
+            val items = RecordingFiles.trashed(dir)
+            main.post {
+                if (isDestroyed) return@post
+                if (items.isEmpty()) {
+                    AlertDialog.Builder(this).setTitle(R.string.trash_title).setMessage(R.string.trash_empty)
+                        .setPositiveButton(R.string.ok, null).show()
+                    return@post
+                }
+                val dates = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                val labels = items.map {
+                    getString(R.string.trash_item, it.name, dates.format(Date(it.deletedAt)), StorageUtil.formatBytes(it.size))
+                }.toTypedArray()
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.trash_title)
+                    .setItems(labels) { _, which -> askTrashed(items[which], dir) }
+                    .setNeutralButton(R.string.trash_empty_all) { _, _ -> askEmptyTrash(items) }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+            }
+        }
+    }
+
+    private fun askTrashed(item: RecordingFiles.Trashed, dir: File) {
+        AlertDialog.Builder(this)
+            .setTitle(item.name)
+            .setMessage(R.string.trash_item_message)
+            .setPositiveButton(R.string.trash_restore) { _, _ ->
+                if (RecordingFiles.restore(item, dir) == null) {
+                    Toast.makeText(this, getString(R.string.trash_restore_failed, item.name), Toast.LENGTH_LONG).show()
+                }
+                refresh()
+            }
+            .setNeutralButton(R.string.trash_delete_forever) { _, _ ->
+                if (!item.file.delete() && item.file.exists()) {
+                    Toast.makeText(this, getString(R.string.recording_delete_failed, item.name), Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun askEmptyTrash(items: List<RecordingFiles.Trashed>) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.trash_empty_all)
+            .setMessage(resources.getQuantityString(R.plurals.trash_empty_message, items.size, items.size))
+            .setPositiveButton(R.string.trash_delete_forever) { _, _ -> items.forEach { it.file.delete() } }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
@@ -533,6 +610,7 @@ class RecordingsActivity : AppCompatActivity() {
         private const val MENU_SHARE = 1
         private const val MENU_RENAME = 2
         private const val MENU_DELETE = 3
+        private const val MENU_TRASH = 4
     }
 }
 

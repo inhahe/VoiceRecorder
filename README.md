@@ -88,9 +88,11 @@ built-in directory navigator.
   folder, newest first, with each one's length, size and date, and follows the folder while it is
   open. Tap one to play it in the player at the bottom: tap it again, or the play button, to pause;
   drag the bar to move through it; ⏮ goes back to the start. The one in the player is marked (a
-  speaker while it plays, a pause sign while paused). Its **⋮** menu shares it to another app,
-  renames it (the extension is kept, and nothing is ever overwritten) or deletes it, after asking,
-  since Android keeps no recycle bin for it. The "Saved" message after a recording has a **Play**
+  speaker while it plays, a pause sign while paused), and the player shows the spectrum of what is
+  playing, in step with what you hear. Its **⋮** menu shares it to another app, renames it (the
+  extension is kept, and nothing is ever overwritten) or deletes it, with an **Undo**: a deleted
+  recording waits under **Recently deleted** (the screen's own **⋮** menu) for 30 days, to be
+  restored or deleted for good, then goes by itself. The "Saved" message after a recording has a **Play**
   button that opens it there. Playing pauses when you leave the screen, when a call or another app
   takes the sound (and says so if one has it when you press Play), and when headphones are
   unplugged; turning the phone doesn't interrupt it. The
@@ -145,8 +147,9 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 | `SettingsActivity.kt` | Configure default format / sample rate / bitrate / channels / folder / filename pattern. |
 | `RecordingsActivity.kt` | The recordings screen: the save folder's recordings (listed and measured off the main thread, followed with a `FileObserver`), share / rename / delete, and the player bar. `RecordingsModel` (in the same file) keeps the player through a rotation. |
 | `PlayerController.kt` | The player's rules (open, play, pause, the end, errors, a recording renamed or deleted under it) over an `AudioOutput`, so they are tested on the JVM. |
-| `MediaPlayerOutput.kt` | The `AudioOutput` a phone uses: Android's `MediaPlayer`. |
-| `RecordingFiles.kt` | Which files are recordings, the rename rules, the length clock, a share's MIME type. |
+| `DecodingOutput.kt` | The `AudioOutput` a phone uses: decodes with `MediaExtractor` and `MediaCodec` and plays through an `AudioTrack`, so the spectrum can be shown for what is heard. |
+| `PlaybackMeterQueue.kt` | The playback spectrum: decoded blocks queued by the frame they start at, analysed once the track has played them. |
+| `RecordingFiles.kt` | Which files are recordings, the rename rules, Recently deleted (the trash), the length clock, a share's MIME type. |
 | `Views.kt` | Small view helpers shared by the screens (`setTextIfChanged`, for text set on a tick). |
 | `WavLayout.kt` | A WAV's layout and length from its header (a cut-off one included), and `WavView`, the corrected view a cut-off WAV is played through. |
 | `RecordingService.kt` | Foreground (`microphone`) service that owns the active recorder + the live [`SpectrumAnalyzer`], and pauses the recording if its chosen input is unplugged. |

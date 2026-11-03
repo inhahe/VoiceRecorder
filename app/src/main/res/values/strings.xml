@@ -162,8 +162,20 @@
     <string name="recording_rename_exists">There\'s already a file with that name</string>
     <string name="recording_rename_failed">Couldn\'t rename the file</string>
     <string name="recording_delete">Delete</string>
-    <string name="recording_delete_title">Delete %1$s?</string>
-    <string name="recording_delete_message">It is deleted for good: Android keeps no recycle bin for it.</string>
+    <string name="recording_deleted">%1$s moved to Recently deleted</string>
+    <string name="undo">Undo</string>
+    <string name="trash_title">Recently deleted</string>
+    <string name="trash_empty">Nothing here. Deleted recordings wait here for 30 days, in case you want them back.</string>
+    <string name="trash_item">%1$s · deleted %2$s · %3$s</string>
+    <string name="trash_item_message">Restore it to the recordings, or delete it for good. Left here, it goes by itself 30 days after it was deleted.</string>
+    <string name="trash_restore">Restore</string>
+    <string name="trash_restore_failed">Couldn\'t restore %1$s</string>
+    <string name="trash_delete_forever">Delete for good</string>
+    <string name="trash_empty_all">Empty</string>
+    <plurals name="trash_empty_message">
+        <item quantity="one">Delete %1$d recording for good? This can\'t be undone.</item>
+        <item quantity="other">Delete %1$d recordings for good? This can\'t be undone.</item>
+    </plurals>
     <string name="recording_delete_failed">Couldn\'t delete %1$s</string>
     <string name="player_nothing_loaded">Tap a recording to play it</string>
     <string name="player_play">Play</string>
