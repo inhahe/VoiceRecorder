@@ -29,9 +29,15 @@ MainActivity ──binds──> RecordingService ──owns──> Recorder (Pcm
   second of audio, at fixed points in it (inside a buffer when the buffer is longer); each analysis
   looks at a fixed length of time (`WINDOW_SECONDS`, 2048 frames at 48 kHz, zero-padded to a power
   of two for the FFT), at least two hops long, so consecutive Hann windows overlap by half and no
-  sound slips between them; and the screen's 50 ms poll takes the peak of each band since its last
-  read, so a short sound shows at its full height however many analyses one buffer or one poll
-  spans. The rate comes with every `push`, and a new one starts the meter afresh.
+  sound slips between them; and the screen's 50 ms poll (`takeSpectrum`) gets the latest analysis,
+  but no lower than the highest each band rose to since the previous poll. A rise is what a poll
+  between bursts of analyses would miss (a long buffer's analyses all land at once, a click among
+  the first has decayed by the last); a fall it can't miss, so a falling bar shows where it is now
+  rather than at the burst's oldest analysis. A rise unread for half a second is dropped, so the
+  screen coming back on doesn't flash a sound long past. After a reset the window starts as
+  silence and the analyses run on the usual grid from the first hop, so the first moments after
+  Record or Resume count as much as any. The rate comes with every `push`, and a new one starts
+  the meter afresh.
 - **Service owns the recording, Activity owns the UI.** The Activity can die/rebind; recording state
   lives in the foreground service and the UI re-derives itself in `refreshUi()`.
 - **Settings is the only persistence.** No database; everything is SharedPreferences-backed

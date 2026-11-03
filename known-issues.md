@@ -278,8 +278,10 @@ refresh path is exercised too.
   unit tests (`SpectrumAnalyzerTest`): silence stays flat, a tone lights a band, the peak band rises
   with frequency, the FFT matches a naive DFT, a steady tone's bar holds steady, the bars fall at
   the same speed whatever the buffer size, analyses come at the same rate per second and the bars
-  let go as quickly at every sample rate, the windows overlap at every rate offered, and a short
-  sound shows at full height whatever the buffer size (0.13.6). The meter clearing on pause is
+  let go as quickly at every sample rate, the windows overlap at every rate offered, a short sound
+  shows at full height and a falling bar at its latest analysis whatever the buffer size, the bars
+  hold between analyses, a rise nobody read is dropped once old, and sound right after a reset
+  counts like sound later (0.13.7). The meter clearing on pause is
   covered by `CaptureLoopTest`. (The emulator mic is digital silence, so the on-device meter shows
   flat bars — reactivity is validated by the unit tests, not the emulator.)
 

@@ -180,14 +180,84 @@ class SpectrumAnalyzerTest {
         }
     }
 
+    /**
+     * A falling bar shows the latest analysis, however many came in the buffer since the last
+     * read: holding the highest of them would hold it at the oldest, a buffer late on phones
+     * with long buffers.
+     */
+    @Test
+    fun aFallingBarShowsTheLatestAnalysisWhateverTheBufferSize() {
+        // Two long buffers of tone, then two of silence; read once per buffer, as the screen would.
+        val pcm = sinePcm(3000.0, 4 * 7168, until = 2 * 7168)
+        fun lastRead(chunkFrames: Int): Float {
+            val analyzer = SpectrumAnalyzer()
+            var last = 0f
+            pushInChunks(analyzer, pcm, chunkFrames) { last = analyzer.takeBands().maxOrNull() ?: 0f }
+            return last
+        }
+        val reference = lastRead(64)
+        assertTrue("the bar should be falling, not gone or still full: $reference", reference in 0.05f..0.8f)
+        assertEquals(reference.toDouble(), lastRead(7168).toDouble(), 1e-3)
+    }
+
+    /** Between analyses the bars stay where they are: a read with nothing new isn't empty. */
+    @Test
+    fun betweenAnalysesTheBarsHold() {
+        val analyzer = SpectrumAnalyzer()
+        val tone = sinePcm(3000.0, sampleRate / 2)
+        analyzer.push(tone, tone.size, channels = 1, sampleRate = sampleRate)
+        analyzer.takeBands() // takes the rises (the tone's onset among them)
+        val latest = analyzer.takeBands()
+        val before = analyzer.analyses
+        val bit = ByteArray(100 * 2) // far less than a hop
+        analyzer.push(bit, bit.size, channels = 1, sampleRate = sampleRate)
+        assertEquals(before, analyzer.analyses)
+        assertTrue("the tone should show: ${latest.maxOrNull()}", (latest.maxOrNull() ?: 0f) > 0.5f)
+        assertEquals(latest.toList(), analyzer.takeBands().toList())
+    }
+
+    /**
+     * A rise nobody read for a while (the screen was off) isn't shown when reading starts again:
+     * the first read after it would flash a sound long past.
+     */
+    @Test
+    fun aRiseNobodyReadIsDroppedOnceItIsOld() {
+        val analyzer = SpectrumAnalyzer()
+        val burst = sinePcm(3000.0, sampleRate / 10)
+        analyzer.push(burst, burst.size, channels = 1, sampleRate = sampleRate)
+        val silence = ByteArray(sampleRate * 2) // a second, unread
+        analyzer.push(silence, silence.size, channels = 1, sampleRate = sampleRate)
+        val shown = analyzer.takeBands().maxOrNull() ?: 0f
+        assertTrue("a second-old click still showed at $shown", shown < 0.3f)
+    }
+
+    /**
+     * Sound just after a reset (recording started or resumed) counts as much as sound later:
+     * the window starts as silence, so the first analyses come on the usual grid instead of
+     * waiting for a full window that would see the start only near its edge.
+     */
+    @Test
+    fun aSoundRightAfterAResetCountsLikeOneLater() {
+        fun shown(at: Int): Float {
+            val analyzer = SpectrumAnalyzer()
+            val pcm = sinePcm(3000.0, sampleRate / 2, from = at, until = at + sampleRate / 200)
+            var highest = 0f
+            pushInChunks(analyzer, pcm, chunkFrames = 64) { highest = max(highest, analyzer.takeBands().maxOrNull() ?: 0f) }
+            return highest
+        }
+        val later = shown(10_000)
+        val early = shown(100)
+        assertTrue("5 ms of tone 2 ms after the start showed at $early, a later one at $later", early > later - 0.1f)
+    }
+
     /** Nor does the sample rate change how often the bars are analysed. */
     @Test
     fun analysesComeAtAFixedRatePerSecondOfAudio() {
         for (rate in AudioFormatSpec.SAMPLE_RATES) {
             val analyzer = SpectrumAnalyzer()
             pushInChunks(analyzer, ByteArray(rate * 2 * 2), chunkFrames = 300, rate = rate) // two seconds
-            // Less the time the window takes to fill.
-            val expected = (2.0 - SpectrumAnalyzer.windowLengthFor(rate).toDouble() / rate) * SpectrumAnalyzer.UPDATES_PER_SECOND
+            // From the first hop on: the window starts as silence rather than waiting to fill.
+            val expected = 2.0 * SpectrumAnalyzer.UPDATES_PER_SECOND
             assertEquals("$rate Hz", expected, analyzer.analyses.toDouble(), 2.0)
         }
     }
@@ -210,7 +280,9 @@ class SpectrumAnalyzerTest {
             return -1
         }
         val reference = msToHalf(48000)
-        assertTrue("the bars should fall: $reference ms", reference > 0)
+        // Falling to half takes a few hundred ms; an answer of a few ms would mean the bars read
+        // empty between analyses rather than falling.
+        assertTrue("the bars should fall, not vanish: $reference ms", reference > 100)
         for (rate in listOf(8000, 16000, 44100, 96000)) {
             val took = msToHalf(rate)
             assertTrue("$rate Hz took $took ms to fall to half, 48 kHz $reference ms", abs(took - reference) <= 25)

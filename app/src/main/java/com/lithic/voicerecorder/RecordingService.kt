@@ -43,10 +43,11 @@ class RecordingService : Service() {
     private val analyzer = SpectrumAnalyzer()
 
     /**
-     * The recording meter's 0..1 frequency bands: the peak of each since the previous call (see
-     * [SpectrumAnalyzer.takeBands]), or empty when idle. For the one screen that draws them.
+     * The recording meter's 0..1 frequency bands, or empty when idle. Takes what rose since the
+     * previous call (see [SpectrumAnalyzer.takeBands]), so it is for the one screen that draws
+     * them: a second caller would take the first one's rises.
      */
-    fun spectrum(): FloatArray = if (isRecording) analyzer.takeBands() else EMPTY_SPECTRUM
+    fun takeSpectrum(): FloatArray = if (isRecording) analyzer.takeBands() else EMPTY_SPECTRUM
 
     /**
      * Digital input gain in dB, applied to everything captured from here on. Setting it while a

@@ -1,0 +1,1 @@
+The frequency meter's bars fall as promptly on phones with long audio buffers as on others, no old peak flashes up when you come back to the app, and sound right after Record or Resume shows at full height.

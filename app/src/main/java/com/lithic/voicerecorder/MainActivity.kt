@@ -674,7 +674,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSpectrum() {
         if (service?.isRecording == true) {
-            binding.spectrumView.submitBands(service?.spectrum() ?: FloatArray(0))
+            binding.spectrumView.submitBands(service?.takeSpectrum() ?: FloatArray(0))
         }
     }
 
