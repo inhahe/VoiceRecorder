@@ -18,36 +18,40 @@ data class ClipCount(val atInput: Int, val byGain: Int) {
 }
 
 /**
- * How one recording has clipped so far: how many samples of each kind (see [ClipCount]), and when
- * each kind last did.
+ * One kind of clipping over a recording: how many samples, and the `SystemClock.elapsedRealtime()`
+ * of the latest buffer with any ([lastMs] is meaningless while [samples] is 0).
+ */
+data class ClipTally(val samples: Long = 0L, val lastMs: Long = 0L) {
+    /** This tally with [count] more samples, found in a buffer captured at [nowMs]. */
+    fun add(count: Int, nowMs: Long): ClipTally = if (count == 0) this else ClipTally(samples + count, nowMs)
+
+    /** Whether this kind clipped less than [windowMs] before [nowMs]: whether its CLIP light is lit. */
+    fun within(nowMs: Long, windowMs: Long): Boolean = samples > 0 && nowMs - lastMs < windowMs
+}
+
+/** Where a recording clipped, which decides what the message after it says to do. */
+enum class ClippedAt { INPUT, GAIN, BOTH }
+
+/**
+ * How one recording has clipped so far, a [ClipTally] for each kind (see [ClipCount]).
  *
  * Immutable, so the capture thread publishes a new one through a single volatile field and a reader
  * on another thread always sees one consistent record, never a total from one buffer and a time from
  * the next.
  */
-data class ClipRecord(
-    val inputSamples: Long = 0L,
-    val gainSamples: Long = 0L,
-    /** `SystemClock.elapsedRealtime()` of the latest buffer that clipped at the input; meaningless while [inputSamples] is 0. */
-    val lastInputMs: Long = 0L,
-    /** The same for the gain; meaningless while [gainSamples] is 0. */
-    val lastGainMs: Long = 0L,
-) {
+data class ClipRecord(val input: ClipTally = ClipTally(), val gain: ClipTally = ClipTally()) {
     /** This record with [count], found in a buffer captured at [nowMs] (`elapsedRealtime()`), added. */
-    fun add(count: ClipCount, nowMs: Long): ClipRecord = ClipRecord(
-        inputSamples = inputSamples + count.atInput,
-        gainSamples = gainSamples + count.byGain,
-        lastInputMs = if (count.atInput > 0) nowMs else lastInputMs,
-        lastGainMs = if (count.byGain > 0) nowMs else lastGainMs,
-    )
+    fun add(count: ClipCount, nowMs: Long): ClipRecord =
+        ClipRecord(input.add(count.atInput, nowMs), gain.add(count.byGain, nowMs))
 
-    /** Whether the input clipped less than [windowMs] before [nowMs]: the input row's CLIP light. */
-    fun inputClippedWithin(nowMs: Long, windowMs: Long): Boolean =
-        inputSamples > 0 && nowMs - lastInputMs < windowMs
-
-    /** Whether the gain clipped less than [windowMs] before [nowMs]: the gain row's CLIP light. */
-    fun gainClippedWithin(nowMs: Long, windowMs: Long): Boolean =
-        gainSamples > 0 && nowMs - lastGainMs < windowMs
+    /** Where it clipped over the whole recording, or null if it never did. */
+    val clippedAt: ClippedAt?
+        get() = when {
+            input.samples > 0 && gain.samples > 0 -> ClippedAt.BOTH
+            input.samples > 0 -> ClippedAt.INPUT
+            gain.samples > 0 -> ClippedAt.GAIN
+            else -> null
+        }
 
     companion object {
         val NONE = ClipRecord()

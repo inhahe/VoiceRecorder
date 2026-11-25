@@ -22,11 +22,14 @@
     <string name="default_summary">%1$s · %2$s · %3$s</string>
     <string name="storage_estimate">%1$s (%2$s free)</string>
     <string name="saved_as">Saved: %1$s</string>
-    <!-- Which of these follows a recording that clipped depends on where it did (ClipCount): the
-         sound arriving already clipped, which no gain setting fixes, or the gain clipping it. -->
-    <string name="saved_as_clipped_gain">Saved: %1$s — audio clipped, try a lower gain</string>
-    <string name="saved_as_clipped_input">Saved: %1$s — the input clipped: too loud for the mic</string>
-    <string name="saved_as_clipped_both">Saved: %1$s — the input clipped, and the gain is too high</string>
+    <!-- After a recording that clipped: the advice for where it did (ClippedAt), then "Saved: name".
+         The advice comes first so that a long file name, not the advice, is what runs out of room. -->
+    <string name="saved_as_clipped">%1$s Saved: %2$s</string>
+    <string name="clipped_input">The input clipped: too loud for the mic.</string>
+    <string name="clipped_gain">Audio clipped: try a lower gain.</string>
+    <string name="clipped_both">The input clipped, and the gain is too high.</string>
+    <string name="input_clip_description">Clipping at the input</string>
+    <string name="gain_clip_description">Clipping from the gain</string>
     <string name="input_label">Input</string>
     <string name="input_automatic">Automatic (system default)</string>
     <string name="input_picker_title">Record from</string>

@@ -124,6 +124,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
+                android:contentDescription="@string/input_clip_description"
                 android:text="@string/clip_warning"
                 android:textColor="@color/warn_red"
                 android:textSize="12sp"
@@ -131,15 +132,14 @@
                 android:textAllCaps="true"
                 android:visibility="invisible" />
 
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
+            <!-- Weighted itself, not pushed right by a weighted Space: LinearLayout measures a
+                 child after a weighted one at the row's full width and never shrinks it, so a
+                 long device name would run off the screen instead of wrapping. -->
             <TextView
                 android:id="@+id/inputValue"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:layout_marginStart="12dp"
                 android:gravity="end"
                 android:text="@string/input_automatic"
@@ -179,6 +179,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
+                android:contentDescription="@string/gain_clip_description"
                 android:text="@string/clip_warning"
                 android:textColor="@color/warn_red"
                 android:textSize="12sp"

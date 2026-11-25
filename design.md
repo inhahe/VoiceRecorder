@@ -305,7 +305,7 @@ different summary in that case rather than implying the request was honoured.
 
 Android has no mic pre-amp API, so gain is **software gain on the captured PCM** (`Gain.apply`),
 applied in `PcmRecorder`'s capture loop **before** the buffer reaches either the encoder or the
-analyzer. That ordering is the important part: the file, the spectrum meter and the clip indicator
+analyzer. That ordering is the important part: the file, the spectrum meter and the clip lights
 are then guaranteed to describe the same signal.
 
 - **Live changes.** `Recorder.gainDb` is `@Volatile`; the UI writes `RecordingService.gainDb`, which
@@ -320,14 +320,17 @@ are then guaranteed to describe the same signal.
   and it happens at 0 dB as readily as at any other gain; the second, a lower gain fixes. A sample in
   both counts once, as the input's. Until 0.18.0 only the second kind was counted, and none at 0 dB,
   so a recording that arrived clipped never lit the light.
-- **One record, published whole.** `PcmRecorder` keeps a `ClipRecord`, totals of each kind plus the
-  `elapsedRealtime()` each last clipped, and the capture thread replaces it through one volatile
-  field, so the UI never reads a total from one buffer and a time from the next.
+- **One record, published whole.** `PcmRecorder` keeps a `ClipRecord`, one `ClipTally` per kind
+  (samples, and the `elapsedRealtime()` it last clipped), and the capture thread replaces it through
+  one volatile field, so the UI never reads a total from one buffer and a time from the next.
   `RecordingService.isInputClipping()` / `isGainClipping()` turn it into a ~1.2 s hold for the two
   CLIP lights, the input row's and the gain row's (polled by the existing 50 ms UI tick), so where
-  the light comes on says where it clipped. The totals choose the post-save warning: clipped at the
-  input, by the gain, or both. The record is copied out of the recorder in `stopRecording()` after
-  `stop()`, which waits for the capture thread's last buffer, and before the recorder is dropped.
+  the light comes on says where it clipped.
+- **The message after it.** `stopRecording()` reads the record after `Recorder.stop()`, whose
+  contract is to return only once capture has ended, so clipping right up to Stop counts, and hands
+  it to the screen in the `StopReport` along with the file and any error. `ClipRecord.clippedAt`
+  (input, gain or both) picks the advice, which leads the "saved" Snackbar, ahead of the file name,
+  so a long name is what runs out of room; after a capture error it ends the error dialog instead.
 - **What counts as clipped at the input.** Only samples at full scale. Clipping that happened
   before processing that moves the flat tops off full scale (Android's voice chain filters the
   signal after its converter) can leave none there, and goes unseen: telling a flattened waveform
@@ -488,7 +491,8 @@ the screen is started.
 
 `app/src/test` holds JVM-only tests (no Android framework): `SpectrumAnalyzerTest` for the DSP,
 `FilenameHistoryTest` for the MRU/uniquing rules, `GainTest` for the gain maths and clip counting
-(both kinds, at unity gain too), `ClippingTest` for the clip totals and the two lights' hold,
+(both kinds, at unity gain too), `ClippingTest` for the clip totals, the two lights' hold and
+which advice follows a recording,
 `InputDevicesTest` for the input labelling/key/matching/rate-advice rules and the missing-input
 rules (`isUnavailable`, and `stepFor`'s pause/resume table), `CaptureSourceTest` for
 the audio-source mapping and its fallback, `AudioFormatSpecTest` for rate labelling, `snap()`, the

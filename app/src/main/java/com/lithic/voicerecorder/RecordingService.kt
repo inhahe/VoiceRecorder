@@ -108,18 +108,11 @@ class RecordingService : Service() {
 
     /** True while the input has clipped within the last [CLIP_HOLD_MS] — the input row's CLIP light. */
     fun isInputClipping(): Boolean =
-        recorder?.clips?.inputClippedWithin(SystemClock.elapsedRealtime(), CLIP_HOLD_MS) == true
+        recorder?.clips?.input?.within(SystemClock.elapsedRealtime(), CLIP_HOLD_MS) == true
 
     /** True while the gain has clipped within the last [CLIP_HOLD_MS] — the gain row's CLIP light. */
     fun isGainClipping(): Boolean =
-        recorder?.clips?.gainClippedWithin(SystemClock.elapsedRealtime(), CLIP_HOLD_MS) == true
-
-    /**
-     * How the just-finished recording clipped, for the message after saving. Set when it stops;
-     * while one is under way, the lights above are what describe it.
-     */
-    var finishedClips: ClipRecord = ClipRecord.NONE
-        private set
+        recorder?.clips?.gain?.within(SystemClock.elapsedRealtime(), CLIP_HOLD_MS) == true
 
     /** Absolute path of the file currently being written, or null when idle. */
     var currentFile: File?
@@ -134,15 +127,15 @@ class RecordingService : Service() {
     var isPaused: Boolean = false
         private set
 
-    /**
-     * Called on the main thread when a recording stops, for any reason: with the file (null if there
-     * is none) and an error message (null on a clean stop). Both can be set together, because after
-     * a capture error the part recorded before it is kept.
-     */
-    var onStopped: ((file: File?, error: String?) -> Unit)? = null
+    /** Called on the main thread when a recording stops, for any reason. */
+    var onStopped: ((StopReport) -> Unit)? = null
 
-    /** How a recording ended in an error, for a screen that wasn't there to be told. */
-    class StopReport(val file: File?, val error: String)
+    /**
+     * How a recording ended: the file left on disk (null if there is none), the error message (null
+     * on a clean stop), and how it clipped. File and error can both be set, because after a capture
+     * error the part recorded before it is kept.
+     */
+    class StopReport(val file: File?, val error: String?, val clips: ClipRecord)
 
     /**
      * Set when a recording ends in an error while nothing is listening on [onStopped]. A capture
@@ -189,7 +182,6 @@ class RecordingService : Service() {
         }
 
         outputFile.parentFile?.mkdirs()
-        finishedClips = ClipRecord.NONE
         val r = RecorderFactory.create(
             spec, outputFile, analyzer, gainDb, input,
             CaptureSource.androidSource(captureSource, CaptureSource.unprocessedSupported(this))
@@ -313,25 +305,26 @@ class RecordingService : Service() {
         if (!isRecording) return null
         val file = currentFile
         var error: String? = null
+        val clips: ClipRecord
         try {
             recorder?.stop()
         } catch (t: Throwable) {
             error = t.message ?: t.javaClass.simpleName
         } finally {
-            // For the message after saving. Read after stop(), which waits for the capture thread
-            // to deliver its last buffer, so clipping up to the end counts; and before
-            // endRecording() drops the recorder.
-            finishedClips = recorder?.clips ?: ClipRecord.NONE
+            // After stop(), once capture has ended, so clipping right up to the end counts; and
+            // before endRecording() drops the recorder.
+            clips = recorder?.clips ?: ClipRecord.NONE
             endRecording()
         }
         // After an error the recorder keeps what it captured. The file is only gone when there
         // was nothing to keep.
         val saved = file?.takeIf { error == null || it.exists() }
+        val report = StopReport(saved, error, clips)
         val listener = onStopped
         if (listener != null) {
-            listener(saved, error)
+            listener(report)
         } else if (error != null) {
-            unreportedStop = StopReport(saved, error)
+            unreportedStop = report
         }
         return saved
     }

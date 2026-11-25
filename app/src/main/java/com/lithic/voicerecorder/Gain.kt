@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
  *
  * Android exposes no mic *pre-amp* control, so this is applied in software: every 16-bit sample is
  * scaled on its way out of [AudioRecord][android.media.AudioRecord] and before it reaches either the
- * encoder or the spectrum analyzer, so the file, the meter and the clip indicator always agree.
+ * encoder or the spectrum analyzer, so the file, the meter and the clip lights always agree.
  *
  * Because it happens after the ADC, boosting can't recover detail the converter never captured and
  * *will* clip if the source is already hot; nor can any gain undo clipping in the audio as it
@@ -28,7 +28,7 @@ object Gain {
     private const val SAMPLE_MAX = 32767
     private const val SAMPLE_MIN = -32768
 
-    /** Linear multiplier for [db]. `linear(0) == 1f` exactly, so the no-gain fast path is exact. */
+    /** Linear multiplier for [db]. `linear(0) == 1f` exactly, so at 0 dB [apply] writes nothing. */
     fun linear(db: Int): Float = if (db == 0) 1f else 10f.pow(db / 20f)
 
     /** "+6 dB" / "0 dB" / "-3 dB" — always signed so the control reads unambiguously. */

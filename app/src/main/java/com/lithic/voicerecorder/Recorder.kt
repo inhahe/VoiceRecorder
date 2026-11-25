@@ -27,7 +27,7 @@ interface Recorder {
 
     /**
      * How this recording has clipped so far, at the input and by the gain. Safe to read from any
-     * thread. The UI uses it to light its clip warnings, and to say after saving that it clipped.
+     * thread. The UI uses it to light its clip warnings, and to say after saving where it clipped.
      */
     val clips: ClipRecord
 
@@ -51,6 +51,9 @@ interface Recorder {
      * Stop capture and flush/finalise the output file. Safe to call once after start(). Throws if
      * capture failed. Even then, the part recorded before the failure is left on disk, unless the
      * failure came before anything was captured.
+     *
+     * Returns, or throws, only once capture has ended: no buffer is delivered after, so [clips] then
+     * describes the whole recording.
      */
     fun stop()
 

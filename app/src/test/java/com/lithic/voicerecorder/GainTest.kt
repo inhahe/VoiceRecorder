@@ -42,7 +42,7 @@ class GainTest {
         assertTrue(before.contentEquals(buf))
     }
 
-    // The case the CLIP light used to miss: audio that arrives clipped while the gain is at 0 dB.
+    // Audio that arrives clipped is the input's to report even at 0 dB, where nothing is scaled.
     @Test fun `unity gain still counts samples that arrived at full scale, touching none`() {
         val buf = pcm(0, 32767, -32768, -32767, 32766)
         val before = buf.copyOf()

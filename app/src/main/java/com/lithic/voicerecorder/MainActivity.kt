@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
             val local = binder as RecordingService.LocalBinder
             service = local.service
             bound = true
-            service?.onStopped = { file, error -> runOnUiThread { onRecordingStopped(file, error) } }
+            service?.onStopped = { report -> runOnUiThread { onRecordingStopped(report) } }
             service?.onInputPauseChanged = { paused -> runOnUiThread { onInputPauseChanged(paused) } }
             // The service may have been recording since before this Activity existed.
             service?.gainDb = settings.gainDb
@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity() {
             // Also raises the input prompt if the input went while the app was in the background.
             refreshUi()
             // A recording that stopped on an error while we were away still gets reported.
-            service?.takeUnreportedStop()?.let { onRecordingStopped(it.file, it.error) }
+            service?.takeUnreportedStop()?.let { onRecordingStopped(it) }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -599,15 +599,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * [file] is what's on disk, [error] why it ended early, if it did. Both are set when capture
-     * failed partway: the part before the failure was kept, and the user needs to hear both halves.
+     * The report's file is what's on disk, its error why it ended early, if it did. Both are set when
+     * capture failed partway: the part before the failure was kept, and the user needs to hear both
+     * halves. Either way, a recording that clipped also says where, and what to do about it.
      */
-    private fun onRecordingStopped(file: File?, error: String?) {
+    private fun onRecordingStopped(report: RecordingService.StopReport) {
         refreshUi()
+        val file = report.file
+        val error = report.error
+        val advice = clipAdvice(report.clips.clippedAt)?.let { getString(it) }
         if (error != null && file != null) {
+            val message = getString(R.string.recording_ended_with_error_message, error, file.name)
             AlertDialog.Builder(this)
                 .setTitle(R.string.recording_ended_with_error)
-                .setMessage(getString(R.string.recording_ended_with_error_message, error, file.name))
+                .setMessage(if (advice != null) "$message\n\n$advice" else message)
                 .setPositiveButton(R.string.ok, null)
                 .show()
         } else if (error != null) {
@@ -617,22 +622,26 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton(R.string.ok, null)
                 .show()
         } else if (file != null) {
-            val clips = service?.finishedClips ?: ClipRecord.NONE
-            val message = getString(
-                when {
-                    clips.inputSamples > 0 && clips.gainSamples > 0 -> R.string.saved_as_clipped_both
-                    clips.inputSamples > 0 -> R.string.saved_as_clipped_input
-                    clips.gainSamples > 0 -> R.string.saved_as_clipped_gain
-                    else -> R.string.saved_as
-                },
-                file.name
-            )
+            val message = if (advice != null) {
+                getString(R.string.saved_as_clipped, advice, file.name)
+            } else {
+                getString(R.string.saved_as, file.name)
+            }
             Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG)
+                .setTextMaxLines(3) // the advice and a long file name need more than the default 2
                 .setAction(R.string.play) {
                     startActivity(Intent(this, RecordingsActivity::class.java).putExtra(RecordingsActivity.EXTRA_PLAY, file.path))
                 }
                 .show()
         }
+    }
+
+    /** The advice for a recording that clipped [where], or null for one that didn't. */
+    private fun clipAdvice(where: ClippedAt?): Int? = when (where) {
+        ClippedAt.INPUT -> R.string.clipped_input
+        ClippedAt.GAIN -> R.string.clipped_gain
+        ClippedAt.BOTH -> R.string.clipped_both
+        null -> null
     }
 
     // --- UI state -------------------------------------------------------------
