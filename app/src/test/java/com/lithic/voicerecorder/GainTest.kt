@@ -7,8 +7,8 @@ import kotlin.math.abs
 
 /**
  * JVM checks for [Gain]: the software input gain applied to captured PCM. Covers the dB/linear
- * mapping, in-place scaling of 16-bit little-endian samples, and the clip counting the UI's CLIP
- * indicator and post-save warning depend on.
+ * mapping, in-place scaling of 16-bit little-endian samples, and the clip counting, at the input and
+ * by the gain, that the UI's two CLIP lights and post-save warning depend on.
  */
 class GainTest {
 
@@ -36,10 +36,30 @@ class GainTest {
     }
 
     @Test fun `unity gain leaves the buffer untouched`() {
-        val buf = pcm(0, 1234, -1234, 32767, -32768)
+        val buf = pcm(0, 1234, -1234, 32766, -32766)
         val before = buf.copyOf()
-        assertEquals(0, Gain.apply(buf, buf.size, 1f))
+        assertEquals(ClipCount.NONE, Gain.apply(buf, buf.size, 1f))
         assertTrue(before.contentEquals(buf))
+    }
+
+    // The case the CLIP light used to miss: audio that arrives clipped while the gain is at 0 dB.
+    @Test fun `unity gain still counts samples that arrived at full scale, touching none`() {
+        val buf = pcm(0, 32767, -32768, -32767, 32766)
+        val before = buf.copyOf()
+        assertEquals(ClipCount(atInput = 3, byGain = 0), Gain.apply(buf, buf.size, 1f))
+        assertTrue(before.contentEquals(buf))
+    }
+
+    @Test fun `attenuation can't undo clipping at the input, so it is still counted`() {
+        val buf = pcm(32767, -32768, 1000)
+        assertEquals(ClipCount(atInput = 2, byGain = 0), Gain.apply(buf, buf.size, 0.5f))
+        assertEquals(listOf(16384, -16384, 500), samples(buf))
+    }
+
+    @Test fun `a sample both clipped on arrival and clamped by the gain counts once, as the input's`() {
+        val buf = pcm(32767, -32768, 20000)
+        assertEquals(ClipCount(atInput = 2, byGain = 1), Gain.apply(buf, buf.size, 2f))
+        assertEquals(listOf(32767, -32768, 32767), samples(buf))
     }
 
     @Test fun `gain scales samples in place, preserving sign`() {
@@ -54,17 +74,17 @@ class GainTest {
         assertEquals(listOf(500, -500), samples(buf))
     }
 
-    @Test fun `clipping clamps to the 16-bit range and is counted`() {
+    @Test fun `clipping clamps to the 16-bit range and is counted as the gain's`() {
         val buf = pcm(20000, -20000, 100)
-        val clipped = Gain.apply(buf, buf.size, 4f)
-        assertEquals(2, clipped)
+        assertEquals(ClipCount(atInput = 0, byGain = 2), Gain.apply(buf, buf.size, 4f))
         assertEquals(listOf(32767, -32768, 400), samples(buf))
     }
 
-    @Test fun `nothing outside the reported length is touched`() {
-        val buf = pcm(100, 100)
-        Gain.apply(buf, 2, 2f) // only the first sample was actually read
-        assertEquals(listOf(200, 100), samples(buf))
+    @Test fun `nothing outside the reported length is touched or counted`() {
+        val buf = pcm(100, 32767)
+        // Only the first sample was actually read; the second is left over from an earlier read.
+        assertEquals(ClipCount.NONE, Gain.apply(buf, 2, 2f))
+        assertEquals(listOf(200, 32767), samples(buf))
     }
 
     @Test fun `a trailing odd byte is left alone`() {

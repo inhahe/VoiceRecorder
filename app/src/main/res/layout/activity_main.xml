@@ -118,6 +118,19 @@
                 android:textSize="12sp"
                 android:textAllCaps="true" />
 
+            <!-- Lit while audio arrives already clipped: too loud before the gain, at any gain -->
+            <TextView
+                android:id="@+id/inputClipText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/clip_warning"
+                android:textColor="@color/warn_red"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:visibility="invisible" />
+
             <Space
                 android:layout_width="0dp"
                 android:layout_height="1dp"
@@ -160,8 +173,9 @@
                 android:textSize="12sp"
                 android:textAllCaps="true" />
 
+            <!-- Lit while the gain pushes samples past full scale -->
             <TextView
-                android:id="@+id/clipText"
+                android:id="@+id/gainClipText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"

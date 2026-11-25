@@ -106,14 +106,19 @@ class RecordingService : Service() {
     fun routedInputLabel(): String? =
         if (isRecording && !isPaused) recorder?.routedInputLabel else null
 
-    /** True while audio has clipped within the last [CLIP_HOLD_MS] — drives the CLIP indicator. */
-    fun isClipping(): Boolean {
-        val last = recorder?.lastClipElapsedMs ?: return false
-        return last > 0L && SystemClock.elapsedRealtime() - last < CLIP_HOLD_MS
-    }
+    /** True while the input has clipped within the last [CLIP_HOLD_MS] — the input row's CLIP light. */
+    fun isInputClipping(): Boolean =
+        recorder?.clips?.inputClippedWithin(SystemClock.elapsedRealtime(), CLIP_HOLD_MS) == true
 
-    /** Samples that clipped during the current (or just-finished) recording. */
-    var clippedSamples: Long = 0L
+    /** True while the gain has clipped within the last [CLIP_HOLD_MS] — the gain row's CLIP light. */
+    fun isGainClipping(): Boolean =
+        recorder?.clips?.gainClippedWithin(SystemClock.elapsedRealtime(), CLIP_HOLD_MS) == true
+
+    /**
+     * How the just-finished recording clipped, for the message after saving. Set when it stops;
+     * while one is under way, the lights above are what describe it.
+     */
+    var finishedClips: ClipRecord = ClipRecord.NONE
         private set
 
     /** Absolute path of the file currently being written, or null when idle. */
@@ -184,7 +189,7 @@ class RecordingService : Service() {
         }
 
         outputFile.parentFile?.mkdirs()
-        clippedSamples = 0L
+        finishedClips = ClipRecord.NONE
         val r = RecorderFactory.create(
             spec, outputFile, analyzer, gainDb, input,
             CaptureSource.androidSource(captureSource, CaptureSource.unprocessedSupported(this))
@@ -309,7 +314,7 @@ class RecordingService : Service() {
         val file = currentFile
         var error: String? = null
         // Read the clip tally before the recorder is dropped; the UI reports it after saving.
-        clippedSamples = recorder?.clippedSamples ?: 0L
+        finishedClips = recorder?.clips ?: ClipRecord.NONE
         try {
             recorder?.stop()
         } catch (t: Throwable) {
@@ -429,7 +434,7 @@ class RecordingService : Service() {
         private const val CHANNEL_ID = "recording"
         private const val NOTIFICATION_ID = 1001
 
-        /** How long the CLIP indicator stays lit after the last clipped sample. */
+        /** How long a CLIP light stays lit after the last sample that clipped its way. */
         private const val CLIP_HOLD_MS = 1200L
     }
 }

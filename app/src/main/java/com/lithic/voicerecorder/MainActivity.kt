@@ -42,7 +42,7 @@ class MainActivity : AppCompatActivity() {
     private val timerTick = object : Runnable {
         override fun run() {
             updateTimer()
-            updateClipIndicator()
+            updateClipIndicators()
             // Routing rarely changes and each read is a native call, so poll it once a second
             // rather than on every 50 ms frame.
             if (tickCount++ % 20 == 0) updateRoutedInput()
@@ -617,12 +617,16 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton(R.string.ok, null)
                 .show()
         } else if (file != null) {
-            val clipped = (service?.clippedSamples ?: 0L) > 0L
-            val message = if (clipped) {
-                getString(R.string.saved_as_clipped, file.name)
-            } else {
-                getString(R.string.saved_as, file.name)
-            }
+            val clips = service?.finishedClips ?: ClipRecord.NONE
+            val message = getString(
+                when {
+                    clips.inputSamples > 0 && clips.gainSamples > 0 -> R.string.saved_as_clipped_both
+                    clips.inputSamples > 0 -> R.string.saved_as_clipped_input
+                    clips.gainSamples > 0 -> R.string.saved_as_clipped_gain
+                    else -> R.string.saved_as
+                },
+                file.name
+            )
             Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG)
                 .setAction(R.string.play) {
                     startActivity(Intent(this, RecordingsActivity::class.java).putExtra(RecordingsActivity.EXTRA_PLAY, file.path))
@@ -684,9 +688,11 @@ class MainActivity : AppCompatActivity() {
         syncInputPrompt()
     }
 
-    private fun updateClipIndicator() {
-        binding.clipText.visibility =
-            if (service?.isClipping() == true) android.view.View.VISIBLE else android.view.View.INVISIBLE
+    /** The two CLIP lights: the input row's for audio that arrives clipped, the gain row's for the gain clipping it. */
+    private fun updateClipIndicators() {
+        fun lit(on: Boolean) = if (on) android.view.View.VISIBLE else android.view.View.INVISIBLE
+        binding.inputClipText.visibility = lit(service?.isInputClipping() == true)
+        binding.gainClipText.visibility = lit(service?.isGainClipping() == true)
     }
 
     private fun audioManager(): AudioManager =

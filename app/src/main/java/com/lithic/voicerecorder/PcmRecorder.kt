@@ -52,10 +52,8 @@ class PcmRecorder(
     override val routedInputLabel: String?
         get() = audioRecord?.routedDevice?.let { InputDevices.optionFor(it).label }
 
-    @Volatile override var lastClipElapsedMs: Long = 0L
-        private set
-
-    @Volatile override var clippedSamples: Long = 0L
+    /** Written only by the capture thread, one whole new record at a time. */
+    @Volatile override var clips: ClipRecord = ClipRecord.NONE
         private set
 
     @Volatile override var onCaptureFailed: (() -> Unit)? = null
@@ -118,12 +116,9 @@ class PcmRecorder(
             buffer = ByteArray(CaptureLoop.readBytes(spec.sampleRate, spec.channels, bufferSize)),
             read = { ar.read(it, 0, it.size) },
             deliver = { buffer, read ->
-                // Gain first, so the file, the meter and the clip warning all agree.
+                // Gain first, so the file, the meter and the clip warnings all agree.
                 val clipped = Gain.apply(buffer, read, gainLinear)
-                if (clipped > 0) {
-                    clippedSamples += clipped
-                    lastClipElapsedMs = SystemClock.elapsedRealtime()
-                }
+                if (clipped.any) clips = clips.add(clipped, SystemClock.elapsedRealtime())
                 enc.encode(buffer, read)
                 analyzer?.push(buffer, read, spec.channels, spec.sampleRate)
             },

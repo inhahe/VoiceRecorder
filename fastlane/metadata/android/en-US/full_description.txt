@@ -14,6 +14,7 @@ Features:
 • A built-in folder navigator: browse, create folders and choose where recordings go.
 • Storage readout: about how many hours of audio fit in the target folder at the current settings.
 • Mic gain from −20 to +24 dB, adjustable while recording.
+• Clip warnings that say where: one light for the gain clipping the sound, another for sound that arrives already too loud for the mic, at any gain.
 • Microphone processing: Android's voice chain (noise reduction and auto-gain) or raw capture for clean USB or line-level mics.
 • Sample-rate warnings, e.g. when a USB interface only records at 48 kHz.
 • A capture error doesn't cost the recording: everything recorded up to that point is saved, and WAV files cut off by a crash still open in common players and editors.

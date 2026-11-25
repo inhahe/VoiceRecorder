@@ -79,9 +79,14 @@ built-in directory navigator.
   next one.
 - **Mic gain:** a −20 … +24 dB slider on the home screen, adjustable **before and during** recording
   (changes take effect on the next captured buffer). Tap the dB readout to snap back to 0 dB. Gain is
-  applied in software to the captured samples, so the file and the spectrum meter match; a red
-  **CLIP** indicator lights while samples are clamping, and if anything clipped, the "saved" message
-  says so. The setting persists between recordings.
+  applied in software to the captured samples, so the file and the spectrum meter match. The
+  setting persists between recordings.
+- **Clip warnings:** two red **CLIP** lights, which show where audio clipped. The one beside
+  **Mic gain** lights while the gain is pushing samples past full scale, which a lower gain fixes.
+  The one beside **Input** lights while the audio arrives already clipped, at any gain, 0 dB
+  included: the sound is too loud for the mic or the source feeding it, and no gain setting can
+  undo that, so move the mic back or turn the source down. If anything clipped, the "saved" message
+  says so, and where.
 - **Live frequency analyzer:** while recording, a small real-time spectrum meter (FFT-based bars)
   is shown on the home screen for *every* format, and hidden again when you stop.
 - **Recordings and player:** **Recordings** on the home screen lists the recordings in the save
@@ -160,7 +165,8 @@ sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
 | `PcmRecorder.kt` | The single capture engine: one `AudioRecord` reads PCM and tees it to the encoder + analyzer. |
 | `CaptureLoop.kt` | The capture thread's loop (read, deliver, clear the meter when a pause is seen), apart from `AudioRecord` so it is tested on the JVM. |
 | `PcmEncoder.kt` | `PcmEncoder` sinks — `WavPcmEncoder` (RIFF/WAVE) and `MediaCodecPcmEncoder` (AAC-in-MP4, Opus-in-Ogg) — plus `endTake`, which finalises whatever a take captured, even after an error. |
-| `Gain.kt` | Software input gain: dB↔linear, in-place scaling of 16-bit PCM, clip counting. |
+| `Gain.kt` | Software input gain: dB↔linear, in-place scaling of 16-bit PCM, clip counting (at the input and by the gain). |
+| `Clipping.kt` | `ClipCount` (one buffer's clipping, by kind) and `ClipRecord` (a recording's totals, and the hold behind the two CLIP lights). |
 | `InputDevices.kt` | Capture-device enumeration, labelling, the reconnect-stable key the chosen input is persisted as, the missing-input rules (ask, never fall back; when to pause and resume), and the device-vs-requested sample-rate advice. |
 | `CaptureSource.kt` | Processed vs raw capture: maps the preference onto a `MediaRecorder.AudioSource`, with the fallback for devices lacking `UNPROCESSED`. |
 | `SpectrumAnalyzer.kt` | Windows/FFTs the PCM stream into log-spaced 0..1 magnitude bands. |

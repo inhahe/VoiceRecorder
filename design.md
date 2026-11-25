@@ -311,13 +311,27 @@ are then guaranteed to describe the same signal.
 - **Live changes.** `Recorder.gainDb` is `@Volatile`; the UI writes `RecordingService.gainDb`, which
   forwards to the running recorder, so a drag on the slider affects the very next buffer. The dB
   value is cached as a linear multiplier on write so the loop never calls `pow()`.
-- **Unity is a fast path.** `Gain.linear(0)` returns exactly `1f` and `Gain.apply` returns
-  immediately, so a user who never touches the slider pays nothing.
-- **Clipping is data, not a guess.** `Gain.apply` returns the number of clamped samples;
-  `PcmRecorder` keeps a running total plus the `elapsedRealtime()` of the last clip.
-  `RecordingService.isClipping()` turns that into a ~1.2 s hold for the CLIP indicator (polled by the
-  existing 50 ms UI tick), and the total drives the post-save warning. The tally is copied out of the
-  recorder in `stopRecording()` before the recorder is dropped.
+- **Unity only reads.** `Gain.linear(0)` returns exactly `1f`, and at unity `Gain.apply` leaves the
+  buffer alone; it still reads every sample, to look for clipping at the input (below).
+- **Clipping is data, not a guess, and comes in two kinds.** `Gain.apply` returns a `ClipCount`
+  (`Clipping.kt`): samples that *arrived* at full scale (±32767, or −32768), and samples that only
+  the gain pushed past it. They are kept apart because they need different fixes: the first means
+  the sound was too loud for the mic, its converter or the source, which no gain setting undoes,
+  and it happens at 0 dB as readily as at any other gain; the second, a lower gain fixes. A sample in
+  both counts once, as the input's. Until 0.18.0 only the second kind was counted, and none at 0 dB,
+  so a recording that arrived clipped never lit the light.
+- **One record, published whole.** `PcmRecorder` keeps a `ClipRecord`, totals of each kind plus the
+  `elapsedRealtime()` each last clipped, and the capture thread replaces it through one volatile
+  field, so the UI never reads a total from one buffer and a time from the next.
+  `RecordingService.isInputClipping()` / `isGainClipping()` turn it into a ~1.2 s hold for the two
+  CLIP lights, the input row's and the gain row's (polled by the existing 50 ms UI tick), so where
+  the light comes on says where it clipped. The totals choose the post-save warning: clipped at the
+  input, by the gain, or both. The record is copied out of the recorder in `stopRecording()` before
+  the recorder is dropped.
+- **What counts as clipped at the input.** Only samples at full scale. Clipping that happened
+  before processing that moves the flat tops off full scale (Android's voice chain filters the
+  signal after its converter) can leave none there, and goes unseen: telling a flattened waveform
+  from a loud one without full-scale samples is a guess, and a light that cries wolf gets ignored.
 - **What gain cannot do.** It is post-ADC, so boosting amplifies whatever noise the converter
   captured and cannot recover clipping that happened in the analogue path. Negative gain is the
   reliable direction; that's why the range is asymmetric but bounded (−20 … +24 dB).
@@ -473,7 +487,8 @@ the screen is started.
 ## Testing
 
 `app/src/test` holds JVM-only tests (no Android framework): `SpectrumAnalyzerTest` for the DSP,
-`FilenameHistoryTest` for the MRU/uniquing rules, `GainTest` for the gain maths and clip counting,
+`FilenameHistoryTest` for the MRU/uniquing rules, `GainTest` for the gain maths and clip counting
+(both kinds, at unity gain too), `ClippingTest` for the clip totals and the two lights' hold,
 `InputDevicesTest` for the input labelling/key/matching/rate-advice rules and the missing-input
 rules (`isUnavailable`, and `stepFor`'s pause/resume table), `CaptureSourceTest` for
 the audio-source mapping and its fallback, `AudioFormatSpecTest` for rate labelling, `snap()`, the

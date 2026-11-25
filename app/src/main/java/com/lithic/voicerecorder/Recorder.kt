@@ -26,13 +26,10 @@ interface Recorder {
     val routedInputLabel: String?
 
     /**
-     * [android.os.SystemClock.elapsedRealtime] of the most recent clipped sample, or 0 if nothing
-     * has clipped. The UI uses it to flash a clip warning.
+     * How this recording has clipped so far, at the input and by the gain. Safe to read from any
+     * thread. The UI uses it to light its clip warnings, and to say after saving that it clipped.
      */
-    val lastClipElapsedMs: Long
-
-    /** Total samples that clipped during this recording. */
-    val clippedSamples: Long
+    val clips: ClipRecord
 
     /**
      * Called on the capture thread when capture ends by itself because of an error, once whatever
