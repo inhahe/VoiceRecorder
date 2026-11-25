@@ -132,7 +132,7 @@ Convenience scripts (Windows, run from the project folder):
 
 | Script | What it does |
 |---|---|
-| `build-apk.bat` | Builds and drops `VoiceRecorder-<version>.apk` in the project folder (`build-apk.bat clean` for a clean build). |
+| `build-apk.bat` | Builds and drops `VoiceRecorder-<version>.apk` in the project folder (`build-apk.bat clean` for a clean build; `build-apk.bat release` also fails unless it is signed with the release key). |
 | `update-phone.bat` | Builds, then installs onto the phone connected over USB (`adb install -r`, app data kept). |
 | `publish-release.bat` | Builds and publishes a new GitHub release `v<version>` with the APK attached, using the [GitHub CLI](https://cli.github.com/). |
 
@@ -144,6 +144,15 @@ file, so `\U`, `\A`, etc. are eaten as escape sequences and will corrupt a Windo
 
 ```
 sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
+```
+
+To build APKs that update existing installs, which the GitHub releases need, it must also name
+the keystore every release was signed with (forward slashes again; a relative path is taken from
+the project folder). Without it, debug builds are signed with your machine's own debug key, and
+`publish-release.bat` refuses to publish them:
+
+```
+debugKeystore=D:/path/to/debug.keystore
 ```
 
 ## How it works (architecture)

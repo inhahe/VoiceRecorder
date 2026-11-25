@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -29,14 +30,16 @@ android {
     // Debug builds are what this app ships (design.md, "Signing"), so they must be signed with the
     // key every earlier release was: Android installs an update only over an app signed with the
     // same key. That key is kept outside the repo, and local.properties (per machine, never
-    // committed) says where: debugKeystore=<path>. Without that entry the build signs with the
-    // machine's own default debug key, whose APKs cannot update an install of a release.
+    // committed) says where: debugKeystore=<path>, with forward slashes, since a .properties file
+    // eats backslashes as escapes, and relative to the project folder unless absolute. Without
+    // that entry the build signs with the machine's own debug key, whose APKs cannot update an
+    // install of a release; checkReleaseKey, below, catches that before a release goes out.
     signingConfigs {
         getByName("debug") {
             val local = Properties()
             rootProject.file("local.properties").takeIf { it.isFile }?.reader()?.use { local.load(it) }
-            local.getProperty("debugKeystore")?.let { path ->
-                storeFile = file(path)
+            local.getProperty("debugKeystore")?.trim()?.takeIf { it.isNotEmpty() }?.let { path ->
+                storeFile = rootProject.file(path)
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
@@ -66,6 +69,32 @@ android {
     }
     buildFeatures {
         viewBinding = true
+    }
+}
+
+// Fails unless the debug APK is signed with the release key, the certificate whose SHA-256 this
+// pins (a public fingerprint, not a secret). publish-release.bat runs it before uploading, since
+// a release signed with any other key can update no existing install, and stays published.
+tasks.register("checkReleaseKey") {
+    dependsOn("assembleDebug")
+    val apk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk")
+    doLast {
+        val expected = "667f61111417c0384afd6cddb306cbfdbedaecb98245f56c7d759d008da688f8"
+        val file = apk.get().asFile
+        val result = com.android.apksig.ApkVerifier.Builder(file).build().verify()
+        if (!result.isVerified) throw GradleException("$file does not verify: ${result.errors}")
+        val signers = result.signerCertificates.map { cert ->
+            MessageDigest.getInstance("SHA-256").digest(cert.encoded)
+                .joinToString("") { "%02x".format(it) }
+        }
+        if (signers != listOf(expected)) {
+            throw GradleException(
+                "$file is signed with $signers, not the release key $expected, so it could " +
+                    "update no existing install: set debugKeystore= in local.properties to the " +
+                    "release keystore (design.md, \"Signing\")."
+            )
+        }
+        logger.lifecycle("Signed with the release key.")
     }
 }
 

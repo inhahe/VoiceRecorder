@@ -536,6 +536,8 @@ Prepared for F-Droid, which builds the app itself from a `v*` tag:
   builds (`vcsInfo`). Both must stay.
 - F-Droid builds the unsigned release APK and signs it with its own key, so an F-Droid install
   and a GitHub (debug-signed) install cannot update each other.
+- `publish-release.bat` tags the commit the APK was built from (`--target`), so the tag F-Droid
+  builds is the released code; GitHub refuses a commit that was not pushed.
 
 ## Signing
 
@@ -545,10 +547,17 @@ was: the debug key whose certificate's SHA-256 begins `66:7F:61:11`. Android's t
 debug key per user profile and make a new one when there is none, so a new PC or profile
 silently builds with a different key, and its APKs cannot update anything already installed.
 
-`app/build.gradle.kts` therefore signs debug builds with the keystore that `local.properties`
-names in `debugKeystore=` (that file is per machine and never committed; the key never goes in
-the repo, from which the source is published). Without the entry, a build signs with the
-machine's own debug key, which is what a fresh clone gets and still builds. Release builds are
-untouched: F-Droid signs those itself.
-- `publish-release.bat` tags the commit the APK was built from (`--target`), so the tag F-Droid
-  builds is the released code; GitHub refuses a commit that was not pushed.
+- **Which key.** `app/build.gradle.kts` signs debug builds with the keystore that
+  `local.properties` names in `debugKeystore=` (forward slashes; relative to the project folder
+  unless absolute). That file is per machine and never committed, and the key never goes in the
+  repo, from which the source is published. It lives in `local.properties` rather than in the
+  user's Gradle home because the project folder is what outlived the last profile change.
+  Without the entry, a build signs with the machine's own debug key, which is what a fresh clone
+  gets and still builds. Release builds are untouched: F-Droid signs those itself.
+- **The check.** The `checkReleaseKey` task fails unless the debug APK's certificate is the
+  release one, pinned there by its SHA-256. `publish-release.bat` builds through it
+  (`build-apk.bat release`), since a release signed with another key would update no one, and a
+  published release is never overwritten.
+- **The key is irreplaceable.** If every copy is lost, no build can update any existing install
+  again, and every user must uninstall, losing the app's settings. Keep backup copies apart from
+  this machine.
