@@ -313,13 +313,15 @@ class RecordingService : Service() {
         if (!isRecording) return null
         val file = currentFile
         var error: String? = null
-        // Read the clip tally before the recorder is dropped; the UI reports it after saving.
-        finishedClips = recorder?.clips ?: ClipRecord.NONE
         try {
             recorder?.stop()
         } catch (t: Throwable) {
             error = t.message ?: t.javaClass.simpleName
         } finally {
+            // For the message after saving. Read after stop(), which waits for the capture thread
+            // to deliver its last buffer, so clipping up to the end counts; and before
+            // endRecording() drops the recorder.
+            finishedClips = recorder?.clips ?: ClipRecord.NONE
             endRecording()
         }
         // After an error the recorder keeps what it captured. The file is only gone when there

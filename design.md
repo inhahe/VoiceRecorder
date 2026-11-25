@@ -326,8 +326,8 @@ are then guaranteed to describe the same signal.
   `RecordingService.isInputClipping()` / `isGainClipping()` turn it into a ~1.2 s hold for the two
   CLIP lights, the input row's and the gain row's (polled by the existing 50 ms UI tick), so where
   the light comes on says where it clipped. The totals choose the post-save warning: clipped at the
-  input, by the gain, or both. The record is copied out of the recorder in `stopRecording()` before
-  the recorder is dropped.
+  input, by the gain, or both. The record is copied out of the recorder in `stopRecording()` after
+  `stop()`, which waits for the capture thread's last buffer, and before the recorder is dropped.
 - **What counts as clipped at the input.** Only samples at full scale. Clipping that happened
   before processing that moves the flat tops off full scale (Android's voice chain filters the
   signal after its converter) can leave none there, and goes unseen: telling a flattened waveform
