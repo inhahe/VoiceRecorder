@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -22,6 +24,24 @@ android {
     // scanner rejects it, and it cannot be verified). App bundles keep theirs.
     dependenciesInfo {
         includeInApk = false
+    }
+
+    // Debug builds are what this app ships (design.md, "Signing"), so they must be signed with the
+    // key every earlier release was: Android installs an update only over an app signed with the
+    // same key. That key is kept outside the repo, and local.properties (per machine, never
+    // committed) says where: debugKeystore=<path>. Without that entry the build signs with the
+    // machine's own default debug key, whose APKs cannot update an install of a release.
+    signingConfigs {
+        getByName("debug") {
+            val local = Properties()
+            rootProject.file("local.properties").takeIf { it.isFile }?.reader()?.use { local.load(it) }
+            local.getProperty("debugKeystore")?.let { path ->
+                storeFile = file(path)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
     }
 
     buildTypes {

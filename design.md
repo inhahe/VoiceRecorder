@@ -536,5 +536,19 @@ Prepared for F-Droid, which builds the app itself from a `v*` tag:
   builds (`vcsInfo`). Both must stay.
 - F-Droid builds the unsigned release APK and signs it with its own key, so an F-Droid install
   and a GitHub (debug-signed) install cannot update each other.
+
+## Signing
+
+The APKs on GitHub and on the phone are debug builds, and Android installs an update only over
+an app signed with the same key, so every one must be signed with the key the first release
+was: the debug key whose certificate's SHA-256 begins `66:7F:61:11`. Android's tools keep a
+debug key per user profile and make a new one when there is none, so a new PC or profile
+silently builds with a different key, and its APKs cannot update anything already installed.
+
+`app/build.gradle.kts` therefore signs debug builds with the keystore that `local.properties`
+names in `debugKeystore=` (that file is per machine and never committed; the key never goes in
+the repo, from which the source is published). Without the entry, a build signs with the
+machine's own debug key, which is what a fresh clone gets and still builds. Release builds are
+untouched: F-Droid signs those itself.
 - `publish-release.bat` tags the commit the APK was built from (`--target`), so the tag F-Droid
   builds is the released code; GitHub refuses a commit that was not pushed.
